@@ -1,4 +1,6 @@
-# A theorem-proved ZeroTier client in C for microcontrollers
+# Formally proven ZeroTier client for microcontrollers and embedded
+
+| Note: may rename this project once it is more complete. Ideas for a good name welcome. FormalTier?
 
 An implementation of a ZeroTier protocol v1 client ("leaf" node) in ISO C11 for small microcontrollers, 
 
@@ -50,6 +52,10 @@ Limits by design:
 * it has no protection against replayed packets yet; 
 * the network's MTU must be 1280 to 1500 (set it on the controller: the stock default is 2800).
 
+
+## What IS proven
+
+* (to be written)
 
 
 [More details](README-MORE.md)

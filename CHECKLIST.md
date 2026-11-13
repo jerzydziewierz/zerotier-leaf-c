@@ -46,8 +46,8 @@ Each item is closed with one line: what was tried, on which code, the result, an
 | T6 | Functions correctly returns error for invalid inputs | 🔴 |
 | T7 | Functions always terminates in finite time for any input | 🔴 |
 | T8 | Functions output always satisfies the contract (so that downstream function can trust it without further checks) | 🔴 |
-| T8 | Functions never read memory outside bounds | 🔴 |
-| T8 | Functions never write memory outside bounds (no side effects) | 🔴 |
+| T9 | Functions never read memory outside bounds (no risk of leaking system data) | 🔴 |
+| T10 | Functions never write memory outside bounds (no side effects) | 🔴 |
 
 
 ## Preferred properties
