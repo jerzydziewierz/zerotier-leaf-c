@@ -1,6 +1,29 @@
-# ZeroTier leaf in C: exploration checklist
+# Provable ZeroTier leaf in C: exploration checklist
 
-Strand `ztram` (TODO Z-48). This folder holds the new solution: a wire-compatible ZeroTier leaf in C with no general heap. The reference solution is `../grey_zerotier/` (public: `../grey-zerotier-public/`); it stays as the differential oracle. Baseline to beat: 110,508 B add-on linked RAM, 509 KB flash (`compile_probe` pair, 2026-11-12).
+Strand `ztram`;
+mode:prototype (TODO Z-48). 
+This folder holds the new solution: a wire-compatible ZeroTier leaf in C with no general heap. 
+
+The reference solution is `../grey_zerotier/` (public: `../grey-zerotier-public/`); it stays as the differential oracle. Baseline to beat: 110,508 B add-on linked RAM, 509 KB flash (`compile_probe` pair, 2026-11-12).
+
+❓ = Question for Grey to answer
+🥦 = Hypothesis, idea for consideration
+💡 = Finding, observation, information
+🔴 = Not ready to start
+⛔ = Do not attempt. Had that idea, but seems like a bad idea now.
+🌱 = Ready to start
+⬆️ or ⏭ = In progress at the time of the last update. No reportable result yet
+🔄 = Worked on, continuing — can resume but won't finish today.
+    * 🔄✅ means "today's bit has been completed, resume tomorrow"
+📞 = Waiting for an external event
+❗️ = Started, but no success yet due to a solvable problem on the way. On hold
+❌ = Tried this, it did not help
+✅ = Finished, successful, no need to revisit
+♻️ = Done at least once, good result, do that again
+⚠️ = High urgency
+⚠️⚠️⚠️ = Mega urgency
+📅 = Date of next action/review
+👥 = Delegated to ...
 
 Each item is closed with one line: what was tried, on which code, the result, and the limit. Evidence tags: [CODE] read in source, [MEASURED] run here, [UNVERIFIED] not yet checked.
 
@@ -12,6 +35,15 @@ Each item is closed with one line: what was tried, on which code, the result, an
 | T2 | Static bound on stack depth and on total RAM (no recursion, no heap, bounded loops) | 🔴 |
 | T3 | No frame reaches the overlay interface unless a pinned peer authenticated it | 🔄 gate proved against the primitive's contract (V-1); "yes means a right MAC" rests on test vectors (V-10); no frame handling yet |
 | T4 | Parse and serialise are inverse for every accepted message | 🔴 |
+| T5 | Functions never crashes or raises exception for any input | 🔴 |
+| T6 | Functions correctly returns error for invalid inputs | 🔴 |
+| T7 | Functions always terminates in finite time for any input | 🔴 |
+| T8 | Functions output always satisfies the contract (so that downstream function can trust it without further checks) | 🔴 |
+
+## Preferred properties
+
+* Minimise RAM usage, including inter-function data passing costs
+* This restricted leaf must be compatible with regular zerotier leafs and controllers
 
 ## Design levers
 
