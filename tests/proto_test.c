@@ -184,6 +184,11 @@ static size_t make_body(uint8_t *b, unsigned int peer, uint8_t *verb)
 		n = 13 + 71 + (size_t)(rnd() % 40u);
 		fill(b, n);
 		memcpy(b + 13, peer_addr[peer], 5);
+		if (rnd() & 7) {
+			b[0] = 13;
+			b[18] = 0;
+			b[83] = 0;
+		}
 		break;
 	case 2: /* OK(HELLO) for the waiting HELLO, or not */
 		*verb = 0x03;
@@ -276,7 +281,7 @@ static size_t make_body(uint8_t *b, unsigned int peer, uint8_t *verb)
 }
 
 /* Give one datagram to the leaf from a heap block of its exact size and check the result. */
-static uint8_t g_tx[ZTL_PKT_MAX], g_data[ZTL_PKT_MAX];
+static uint8_t g_tx[ZTL_PKT_MAX], g_data[ZTL_PKT_MAX], g_id[8];
 static size_t g_tx_len;
 static struct ztl_frame g_frame;
 
@@ -358,7 +363,7 @@ static unsigned int from_peer(unsigned int peer, uint8_t verb, const uint8_t *bo
 	pkt[27] = verb;
 	memcpy(pkt + 28, body, n);
 	ztl_auth_seal(peer_key[peer], pkt, 28 + n, encrypt);
-	memcpy(g_tx, pkt, 8); /* the packet ID, for the checks of the answer */
+	memcpy(g_id, pkt, 8); /* the packet ID, for the checks of the answer */
 	return input(pkt, 28 + n, 1, peer);
 }
 
@@ -403,10 +408,12 @@ static void scenario(void)
 	fill(b, 13 + 71 + 17);
 	b[0] = 13;
 	memcpy(b + 13, peer_addr[1], 5);
+	b[18] = 0;
+	b[83] = 0;
 	r = from_peer(1, 0x01, b, 13 + 71 + 17, 0);
-	memcpy(id, g_tx, 8);
+	memcpy(id, g_id, 8);
 	CHECK(r == ZTL_IN_REPLY && g_tx_len == 28 + 9 + 16, "answer to HELLO");
-	/* g_tx was overwritten by the reply; the packet ID of the HELLO is in id only if input() kept it: */
+	CHECK(memcmp(g_tx + 29, id, 8) == 0, "OK(HELLO) does not name the packet it answers");
 	CHECK(g_tx[27] == 0x03 && g_tx[28] == 0x01 && memcmp(g_tx + 37, b + 5, 8) == 0 && g_tx[45] == 11 && g_tx[46] == 1 &&
 		      g_tx[47] == 4 && g_tx[48] == 0 && g_tx[49] == 8 && g_tx[50] == 0 && g_tx[51] == 0 && g_tx[52] == 0,
 	      "OK(HELLO) contents");
@@ -417,12 +424,15 @@ static void scenario(void)
 	/* ECHO: the same bytes come back. */
 	fill(b, 300);
 	r = from_peer(2, 0x08, b, 300, 1);
-	CHECK(r == ZTL_IN_REPLY && g_tx_len == 28 + 9 + 300 && g_tx[28] == 0x08 && memcmp(g_tx + 37, b, 300) == 0, "answer to ECHO");
+	CHECK(r == ZTL_IN_REPLY && g_tx_len == 28 + 9 + 300 && g_tx[28] == 0x08 && memcmp(g_tx + 29, g_id, 8) == 0 &&
+		      memcmp(g_tx + 37, b, 300) == 0,
+	      "answer to ECHO");
 
 	/* The controller answers the HELLO; then the configuration request goes out. */
 	b[0] = 0x01;
 	put64(b + 1, leaf.ps[0].hello_id ^ 1u);
 	fill(b + 9, 16);
+	b[17] = 13;
 	CHECK(from_peer(0, 0x03, b, 25, 1) == 0 && (leaf.ps[0].flags & ZTL_P_HELLO_WAIT), "OK for another packet ID taken");
 	put64(b + 1, leaf.ps[0].hello_id);
 	CHECK(from_peer(0, 0x03, b, 25, 1) == 0 && !(leaf.ps[0].flags & ZTL_P_HELLO_WAIT), "OK(HELLO) not taken");
@@ -449,7 +459,7 @@ static void scenario(void)
 		n = 9 + make_chunk(b + 9, 500, damage);
 		r = from_peer(0, 0x03, b, n, 1);
 		CHECK(!(leaf.flags & ZTL_L_CONFIG) && (r & ~ZTL_IN_CONFIG) == 0, "damaged configuration %d accepted", damage);
-		leaf.flags |= ZTL_L_REQ_WAIT; /* as if asked again */
+		CHECK(leaf.flags & ZTL_L_REQ_WAIT, "a refused answer ended the wait for the configuration");
 	}
 	/* The right one, through the LZ4 decoder (stored form), then the same answer again. */
 	put64(b + 1, leaf.cfg_req_id);
@@ -507,7 +517,7 @@ static void scenario(void)
 	fill(b + 23, 28);
 	r = from_peer(1, 0x07, b, 23 + 28, 1);
 	CHECK(r == (ZTL_IN_FRAME | ZTL_IN_REPLY) && g_frame.len == 28 && g_frame.ethertype == 0x0806 &&
-		      memcmp(g_frame.data, b + 23, 28) == 0 && g_tx_len == 28 + 9 + 8 && g_tx[28] == 0x07 &&
+		      memcmp(g_frame.data, b + 23, 28) == 0 && g_tx_len == 28 + 9 + 8 && g_tx[28] == 0x07 && memcmp(g_tx + 29, g_id, 8) == 0 &&
 		      memcmp(g_tx + 37, nwid, 8) == 0,
 	      "EXT_FRAME with acknowledgement");
 	memcpy(b + 15, mac2, 6); /* source is another node: bridging is not accepted */
@@ -568,6 +578,7 @@ static void scenario(void)
 	/* Broadcast ARP request: MULTICAST_FRAME to every peer, group number = the address asked for. */
 	static const uint8_t bcast[6] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 
+	memcpy(b, "\x00\x01\x08\x00\x06\x04\x00\x01", 8);
 	for (unsigned int i = 0; i < NPEERS; i++) {
 		n = ztl_frame_to(&leaf, i, bcast, 0x0806, b, 28, tx);
 		CHECK(n == 28 + 21 + 28 && ztl_auth_open(peer_key[i], tx, n, 1) == 1 && tx[27] == 0x0e && tx[36] == 0 &&
@@ -593,6 +604,35 @@ static void scenario(void)
 	(void)ztl_poll(&leaf, now_ms, tx, &peer);
 	CHECK(ztl_poll(&leaf, now_ms, tx, &peer) == 0, "packets to peers that were not heard");
 	CHECK(ztl_frame_to(&leaf, 1, mac1, 0x0800, b, 100, tx) == 0, "frame sent to a peer that was not heard for too long");
+
+	/* An ARP reply to the broadcast address is not an ARP request: group number 0. */
+	fill(b, 9);
+	CHECK(from_peer(2, 0x08, b, 9, 1) == ZTL_IN_REPLY, "ECHO");
+	memcpy(b, "\x00\x01\x08\x00\x06\x04\x00\x02", 8);
+	memset(b + 24, 0x55, 4);
+	n = ztl_frame_to(&leaf, 2, bcast, 0x0806, b, 28, tx);
+	CHECK(n != 0 && ztl_auth_open(peer_key[2], tx, n, 1) == 1 && tx[43] == 0 && tx[46] == 0, "ARP reply sent with an ARP request group");
+
+	/* An answer to a request must not bring back a configuration older than a pushed one. */
+	leaf.flags |= ZTL_L_REQ_WAIT;
+	b[0] = 0x0b;
+	put64(b + 1, leaf.cfg_req_id);
+	n = 9 + make_chunk(b + 9, 400, 0);
+	CHECK(from_peer(0, 0x03, b, n, 1) == 0 && leaf.cfg_ts == 501, "older configuration taken as the answer to a request");
+	/* The controller refuses: first for another request (no effect), then for the waiting one. */
+	b[0] = 0x0b;
+	put64(b + 1, leaf.cfg_req_id ^ 1u);
+	b[9] = 0x07;
+	memcpy(b + 10, nwid, 8);
+	CHECK(from_peer(0, 0x02, b, 18, 1) == 0 && (leaf.flags & ZTL_L_CONFIG), "refusal for another request taken");
+	CHECK(from_peer(1, 0x02, b, 18, 1) == 0 && (leaf.flags & ZTL_L_CONFIG), "refusal from a peer that is not the controller taken");
+	put64(b + 1, leaf.cfg_req_id);
+	CHECK(from_peer(0, 0x02, b, 18, 1) == ZTL_IN_CONFIG && !(leaf.flags & ZTL_L_CONFIG), "refusal by the controller ignored");
+	memcpy(b, nwid, 8);
+	b[8] = 8;
+	b[9] = 0;
+	CHECK(from_peer(2, 0x06, b, 110, 1) == 0, "frame delivered after the controller refused the node");
+	g_ts = 600; /* the random rounds continue with newer configurations */
 }
 
 /* One authentic packet from a peer, sometimes compressed, sometimes in two parts. */

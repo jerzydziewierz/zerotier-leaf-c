@@ -23,7 +23,7 @@ Paths such as `../grey_zerotier/` and `../dl/sdk/` in scripts and documents poin
 
 A fixed-function node: at most 7 pinned peers, one network, packets of at most 2048 bytes in at most two parts, cipher suite Salsa20/12 + Poly1305 only (the node announces protocol version 11, so peers do not use AES with it). It is assigned to its network at provisioning time, in a secure environment, with one pairwise key per peer; no public-key cryptography runs on the device. No `malloc`, no C library calls, no recursion; RAM is the sum of static objects. The core does no input or output and keeps no clock: an adapter gives it each received datagram (`ztl_input()`), asks it regularly for the packets that are due (`ztl_poll()`), and gives it each frame that the host sends (`ztl_frame_to()`).
 
-Limits by design: it does not evaluate the network's flow rules (it admits pinned peers and tells the controller that it has no rules engine); it takes a network configuration only directly from the pinned controller, without checking the controller's signature, and only when the configuration fits one chunk; it does not relay, bridge or discover peers.
+Limits by design: it does not evaluate the network's flow rules (it admits pinned peers and tells the controller that it has no rules engine); it takes a network configuration only directly from the pinned controller, without checking the controller's signature, and only when the configuration fits one chunk; it does not relay, bridge or discover peers; it has no protection against replayed packets yet; the network's MTU must be 1280 to 1500 (set it on the controller: the stock default is 2800).
 
 ## Status
 
@@ -39,7 +39,7 @@ Limits by design: it does not evaluate the network's flow rules (it admits pinne
 | Provisioning (pairwise keys from the identities, with the reference code) | `tools/provision/` | ✅ used by the loopback test. The key agreement is the reference's code: a trusted component, not proved |
 | Zephyr adapter (virtual Ethernet interface, one thread, no heap) | `zephyr/` | ⏭ builds for the Teensy 4.1; not yet run on a board; no test |
 
-Deliberate errors (mutation step): 93 errors in 99 tool runs, every one rejected by the tool that should see it. Measured in a firmware build for the Cortex-M7: code of the leaf 7,525 bytes, Zephyr adapter 2,076 bytes; RAM of the leaf 7,136 bytes (`struct ztl_leaf`), of the whole Zephyr module 15.8 KB with its thread stack and three packet buffers. The reference solution adds about 110 KB of RAM and 400 KB of code.
+Deliberate errors (mutation step): 98 errors in 104 tool runs, every one rejected by the tool that should see it. Measured in a firmware build for the Cortex-M7: code of the leaf 7,525 bytes, Zephyr adapter 2,076 bytes; RAM of the leaf 7,136 bytes (`struct ztl_leaf`), of the whole Zephyr module 15.8 KB with its thread stack and three packet buffers. The reference solution adds about 110 KB of RAM and 400 KB of code.
 
 "Proved" here means: the code meets its written contract, for the tools' model of C. It does not mean that the contract is the right one, that the compiler is correct, or anything about timing. [reports/PROOFS.md](reports/PROOFS.md) lists every check and proof attempted, in plain words, with what each one does not show, and the attempts that failed.
 

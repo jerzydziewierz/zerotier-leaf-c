@@ -25,7 +25,10 @@
 #define VERB_MULTICAST_FRAME        0x0eu
 #define VERB_FLAG_COMPRESSED        0x80u
 
+#define ERROR_OBJ_NOT_FOUND               0x03u
 #define ERROR_NEED_MEMBERSHIP_CERTIFICATE 0x06u
+#define ERROR_NETWORK_ACCESS_DENIED        0x07u
+#define PROTO_VERSION_MIN                 4u /* as the reference: older peers are not answered */
 
 #define ETHERTYPE_ARP 0x0806u
 
@@ -43,11 +46,14 @@
 #define FRAME_HDR     (ZTL_NWID_LEN + 2u)
 #define MC_FRAME_HDR  (ZTL_NWID_LEN + 1u + ZTL_ETH_ALEN + 4u + 2u)
 #define CHUNK_TAIL    17u /* flags 1, update ID 8, total length 4, chunk index 4 */
+#define CHUNK_SIG      (1u + 2u + COM_SIG_LEN) /* signature type 1, length (2), signature */
 
 /* What this node tells the controller with a configuration request: the
  * format version it reads, and who it is. It names no rules engine (key
  * "revr"), so the controller sends one "accept" rule and no capabilities or
- * tags: this leaf admits peers by pinning and does not evaluate rules. */
+ * tags (reference controller, EmbeddedNetworkController.cpp: no rules
+ * engine revision in the request): this leaf admits peers by pinning and
+ * does not evaluate rules. */
 static const char cfg_meta[] = "v=7\nvend=1\npv=b\nmajv=1\nminv=4\nrevv=8";
 #define CFG_META_LEN (sizeof(cfg_meta) - 1u)
 #define CFG_REQ_LEN  (ZTL_PKT_MIN + ZTL_NWID_LEN + 2u + CFG_META_LEN + 16u)
@@ -378,7 +384,10 @@ size_t ztl_frame_to(struct ztl_leaf *l, unsigned int i, const uint8_t dst[ZTL_ET
 		b[ZTL_NWID_LEN] = 0; /* no certificate, no gather request, source is the sender */
 		ztl_copy_bytes(&b[ZTL_NWID_LEN + 1u], dst, ZTL_ETH_ALEN);
 		/* Extra group number: for an ARP request, the address asked for. */
-		if (ethertype == ETHERTYPE_ARP && len >= 28u && ztl_bytes_eq(dst, mac_broadcast, ZTL_ETH_ALEN)) {
+		static const uint8_t arp_request[8] = { 0, 1, 0x08, 0x00, 6, 4, 0, 1 }; /* Ethernet, IPv4, request */
+
+		if (ethertype == ETHERTYPE_ARP && len >= 28u && ztl_bytes_eq(dst, mac_broadcast, ZTL_ETH_ALEN) &&
+		    ztl_bytes_eq(data, arp_request, sizeof(arp_request))) {
 			ztl_copy_bytes(&b[ZTL_NWID_LEN + 1u + ZTL_ETH_ALEN], &data[24], 4u);
 		} else {
 			zero(&b[ZTL_NWID_LEN + 1u + ZTL_ETH_ALEN], 4u);
@@ -455,7 +464,8 @@ static void first_ipv4(const uint8_t *v, size_t n, uint8_t ip[4], uint8_t *prefi
  * Take a network configuration (dictionary d of n bytes) from the
  * controller. It is used only if it is for this network and this node, the
  * network is private, the MTU is in range and the certificate is complete.
- * A pushed configuration must also be newer than the one in use.
+ * No configuration older than the newest one taken since the start is used
+ * (also not as the answer to a request); a pushed one must be newer.
  * The signature of the controller is not checked: the packet came from the
  * pinned controller under the key shared with it (design decision D-8).
  */
@@ -473,7 +483,7 @@ static unsigned int config_apply(struct ztl_leaf *l, const uint8_t *d, size_t n,
 	if (!ztl_dict_get_hex(d, n, ZTL_KEY("nwid"), &nwid) || nwid != ztl_be64(l->nwid) ||
 	    !ztl_dict_get_hex(d, n, ZTL_KEY("id"), &id) || id != ztl_be64(self8) || type != 0u ||
 	    !ztl_dict_get_hex(d, n, ZTL_KEY("mtu"), &mtu) || mtu < ZTL_MTU_MIN || mtu > ZTL_MTU_MAX ||
-	    (pushed && (l->flags & ZTL_L_CONFIG) != 0u && ts <= l->cfg_ts)) {
+	    ts < l->cfg_ts || (pushed && ts == l->cfg_ts)) {
 		count(&l->stats.config_bad);
 		return 0;
 	}
@@ -492,11 +502,10 @@ static unsigned int config_apply(struct ztl_leaf *l, const uint8_t *d, size_t n,
 		count(&l->stats.config_bad);
 		return ZTL_IN_CONFIG;
 	}
-	if (prefix != l->prefix || !ztl_bytes_eq(ip, l->ip, 4u)) {
-		/* Other address: other ARP group; tell every peer again. */
-		for (unsigned int i = 0; i < ZTL_PEERS; i++) {
-			l->ps[i].flags &= (uint8_t)~ZTL_P_LIKE_SENT;
-		}
+	/* A new certificate (the controller dates each one) and maybe another
+	 * address: every peer gets the certificate and the groups again. */
+	for (unsigned int i = 0; i < ZTL_PEERS; i++) {
+		l->ps[i].flags &= (uint8_t)~(ZTL_P_COM_SENT | ZTL_P_LIKE_SENT);
 	}
 	l->com_len = (uint16_t)cn;
 	l->mtu = (uint16_t)mtu;
@@ -527,7 +536,9 @@ static unsigned int on_config_chunk(struct ztl_leaf *l, const uint8_t *b, size_t
 	if (rest != chunk) {
 		const uint8_t *t = &b[ZTL_NWID_LEN + 2u + chunk];
 
-		if (rest - chunk < CHUNK_TAIL || ztl_be32(&t[9]) != chunk || ztl_be32(&t[13]) != 0u) {
+		/* The signature is not verified (D-8), but its place must be right. */
+		if (rest - chunk != CHUNK_TAIL + CHUNK_SIG || ztl_be32(&t[9]) != chunk || ztl_be32(&t[13]) != 0u ||
+		    t[CHUNK_TAIL] != 1u || ztl_be16(&t[CHUNK_TAIL + 1u]) != COM_SIG_LEN) {
 			count(&l->stats.rx_bad_form);
 			return 0;
 		}
@@ -548,9 +559,12 @@ static void begin_ok(struct ztl_leaf *l, unsigned int i, uint8_t *tx, uint8_t ve
 static size_t on_hello(struct ztl_leaf *l, unsigned int i, const uint8_t *pkt, const uint8_t *b, size_t n,
 		       uint8_t *tx)
 {
-	/* The identity in the HELLO must carry the sender's address. Its
-	 * public key is not needed: the MAC was made with the pairwise key. */
-	if (n < HELLO_FIXED + IDENTITY_LEN || !ztl_bytes_eq(&b[HELLO_FIXED], &pkt[ZTL_PKT_IDX_SRC], ZTL_ADDR_LEN)) {
+	/* The identity in the HELLO must carry the sender's address, be of
+	 * type 0 and have no secret part. Its public key is not needed: the
+	 * MAC was made with the pairwise key. */
+	if (n < HELLO_FIXED + IDENTITY_LEN || b[0] < PROTO_VERSION_MIN ||
+	    !ztl_bytes_eq(&b[HELLO_FIXED], &pkt[ZTL_PKT_IDX_SRC], ZTL_ADDR_LEN) || b[HELLO_FIXED + ZTL_ADDR_LEN] != 0u ||
+	    b[HELLO_FIXED + IDENTITY_LEN - 1u] != 0u) {
 		count(&l->stats.rx_bad_form);
 		return 0;
 	}
@@ -579,13 +593,21 @@ static unsigned int on_ok(struct ztl_leaf *l, unsigned int i, const uint8_t *b, 
 
 	/* An OK counts once, and only for the request that is waiting. */
 	if (verb == VERB_HELLO) {
-		if ((l->ps[i].flags & ZTL_P_HELLO_WAIT) != 0u && id == l->ps[i].hello_id) {
+		/* Time stamp (8), version (1), major, minor (1 each), revision (2). */
+		if (n >= OK_HDR + 13u && b[OK_HDR + 8u] >= PROTO_VERSION_MIN && (l->ps[i].flags & ZTL_P_HELLO_WAIT) != 0u &&
+		    id == l->ps[i].hello_id) {
 			l->ps[i].flags &= (uint8_t)~ZTL_P_HELLO_WAIT;
 		}
 	} else if (verb == VERB_NETWORK_CONFIG_REQUEST) {
 		if (i == l->ctrl && (l->flags & ZTL_L_REQ_WAIT) != 0u && id == l->cfg_req_id) {
-			l->flags &= (uint8_t)~ZTL_L_REQ_WAIT;
-			return on_config_chunk(l, &b[OK_HDR], n - OK_HDR, 0);
+			const unsigned int r = on_config_chunk(l, &b[OK_HDR], n - OK_HDR, 0);
+
+			/* Only an answer that was taken ends the wait: after a
+			 * refused one the request goes out again soon. */
+			if (r != 0u && (l->flags & ZTL_L_CONFIG) != 0u) {
+				l->flags &= (uint8_t)~ZTL_L_REQ_WAIT;
+			}
+			return r;
 		}
 	} else {
 		count(&l->stats.rx_ignored);
@@ -593,8 +615,23 @@ static unsigned int on_ok(struct ztl_leaf *l, unsigned int i, const uint8_t *b, 
 	return 0;
 }
 
-static void on_error(struct ztl_leaf *l, unsigned int i, const uint8_t *b, size_t n)
+static unsigned int on_error(struct ztl_leaf *l, unsigned int i, const uint8_t *b, size_t n)
 {
+	/* The controller refuses the configuration request that is waiting
+	 * (access denied, or no such network): the node is not a member any
+	 * more and stops using the network. Only for the waiting request, so
+	 * that an old refusal sent again has no effect. */
+	if (n >= OK_HDR + 1u + ZTL_NWID_LEN && i == l->ctrl && b[0] == VERB_NETWORK_CONFIG_REQUEST &&
+	    (b[OK_HDR] == ERROR_NETWORK_ACCESS_DENIED || b[OK_HDR] == ERROR_OBJ_NOT_FOUND) &&
+	    (l->flags & ZTL_L_REQ_WAIT) != 0u && ztl_be64(&b[1]) == l->cfg_req_id &&
+	    ztl_bytes_eq(&b[OK_HDR + 1u], l->nwid, ZTL_NWID_LEN)) {
+		const unsigned int had = l->flags & ZTL_L_CONFIG;
+
+		l->flags &= (uint8_t)~ZTL_L_CONFIG;
+		l->com_len = 0;
+		count(&l->stats.config_bad);
+		return (had != 0u) ? ZTL_IN_CONFIG : 0u;
+	}
 	/* Layout: verb and packet ID that failed, error code, then for this
 	 * code the network. The peer wants the certificate again. */
 	if (n >= OK_HDR + 1u + ZTL_NWID_LEN && b[OK_HDR] == ERROR_NEED_MEMBERSHIP_CERTIFICATE &&
@@ -603,6 +640,7 @@ static void on_error(struct ztl_leaf *l, unsigned int i, const uint8_t *b, size_
 	} else {
 		count(&l->stats.rx_ignored);
 	}
+	return 0;
 }
 
 /* Give a frame of peer i to the caller, if the node has a configuration
@@ -775,8 +813,7 @@ unsigned int ztl_input(struct ztl_leaf *l, uint8_t *dgram, size_t len, uint32_t 
 	case VERB_OK:
 		return on_ok(l, i, b, n);
 	case VERB_ERROR:
-		on_error(l, i, b, n);
-		return 0;
+		return on_error(l, i, b, n);
 	case VERB_ECHO:
 		*tx_len = on_echo(l, i, pkt, b, n, tx);
 		return (*tx_len != 0u) ? ZTL_IN_REPLY : 0u;

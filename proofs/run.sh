@@ -216,6 +216,11 @@ src/leaf.c|proto|leaf: a silent peer is never forgotten|s/ztl_age_ms(now_ms, s->
 src/leaf.c|proto|leaf: unicast frame sent to a peer that does not own the address|s/	if (!ztl_bytes_eq(dst, peer_mac, ZTL_ETH_ALEN)) {/	if (0) {/
 src/leaf.c|proto|leaf: ARP request sent without the address as group number|s/ztl_copy_bytes(\&b\[ZTL_NWID_LEN + 1u + ZTL_ETH_ALEN\], \&data\[24\], 4u);/zero(\&b[ZTL_NWID_LEN + 1u + ZTL_ETH_ALEN], 4u);/
 src/leaf.c|proto|leaf: subscription without the ARP group of the own address|s/	if (l->prefix != 0u) {/	if (0) {/
+src/leaf.c|proto|leaf: older configuration taken as the answer to a request|s/	    ts < l->cfg_ts || (pushed \&\& ts == l->cfg_ts)) {/	    (pushed \&\& ts <= l->cfg_ts)) {/
+src/leaf.c|proto|leaf: refusal by the controller ignored|s/		l->flags \&= (uint8_t)~ZTL_L_CONFIG;\n		l->com_len = 0;/X/;/const unsigned int had = l->flags \& ZTL_L_CONFIG;/{n;n;s/l->flags \&= (uint8_t)~ZTL_L_CONFIG;/l->flags \&= 0xffu;/}
+src/leaf.c|proto|leaf: refusal taken for another request|s/ \&\& ztl_be64(\&b\[1\]) == l->cfg_req_id \&\&/ \&\&/
+src/leaf.c|proto|leaf: ARP reply sent with an ARP request group|s/ \&\&\n		    ztl_bytes_eq(data, arp_request, sizeof(arp_request))) {/X/;s/		    ztl_bytes_eq(data, arp_request, sizeof(arp_request))) {/		    ztl_bytes_eq(data, arp_request, sizeof(arp_request) - 1u)) {/
+src/leaf.c|proto|leaf: OK names another packet than the one it answers|s/	ztl_copy_bytes(\&tx\[ZTL_PKT_MIN + 1u\], \&pkt\[ZTL_PKT_IDX_IV\], ID_LEN);/	ztl_copy_bytes(\&tx[ZTL_PKT_MIN + 1u], \&pkt[ZTL_PKT_IDX_DEST], ID_LEN);/
 MUT
 		rm -rf $M ;;
 	*) echo "unknown tool $t"; exit 2 ;;

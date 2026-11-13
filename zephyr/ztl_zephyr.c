@@ -4,9 +4,10 @@
  *
  * The leaf (struct ztl_leaf) and the packet buffer tx_buf are used by two
  * threads: the leaf thread (timers, received datagrams) and whatever thread
- * sends a frame through the virtual interface. One mutex guards them. No
- * call that can wait is made while it is held: sockets are used with
- * "do not wait", and received frames go to the network stack's own queue.
+ * sends a frame through the virtual interface. One mutex guards them. While
+ * it is held, sockets are used with "do not wait" and received frames go to
+ * the network stack's own queue; the calls still take locks of the network
+ * stack for a short time (not analysed for every configuration of Zephyr).
  */
 #include <errno.h>
 #include <string.h>
@@ -19,7 +20,8 @@
 #include <zephyr/sys/byteorder.h>
 #include "ztl_zephyr.h"
 
-BUILD_ASSERT(CONFIG_NET_TC_RX_COUNT >= 1, "received frames must go through the RX queue of the network stack");
+BUILD_ASSERT(CONFIG_NET_TC_RX_COUNT >= 1 && !IS_ENABLED(CONFIG_NET_TC_RX_SKIP_FOR_HIGH_PRIO),
+	     "received frames must go through the RX queue of the network stack");
 
 #define ETH_HDR      14u
 #define ETH_IPV4     0x0800u
@@ -39,6 +41,7 @@ static uint16_t local_port;
 static atomic_t running, usable;
 static atomic_t wire_tx, wire_rx, rx_filtered, tx_dropped, rx_dropped;
 static struct net_in_addr have_ip; /* address on the interface now, or 0 */
+static uint8_t have_prefix;        /* and its network part, in bits */
 static uint8_t placeholder_mac[ZTL_ETH_ALEN] = { 0x02, 0x5a, 0x54, 0x4c, 0x00, 0x01 };
 
 K_THREAD_STACK_DEFINE(ztl_stack, CONFIG_ZTL_WORKER_STACK_SIZE);
@@ -84,7 +87,8 @@ static void apply_config(void)
 		return;
 	}
 	memcpy(&ip.s_addr, leaf.ip, 4);
-	if (atomic_get(&usable) && ip.s_addr == have_ip.s_addr && net_if_get_mtu(overlay) == leaf.mtu) {
+	if (atomic_get(&usable) && ip.s_addr == have_ip.s_addr && leaf.prefix == have_prefix &&
+	    net_if_get_mtu(overlay) == leaf.mtu) {
 		return;
 	}
 	overlay_down();
@@ -93,6 +97,7 @@ static void apply_config(void)
 		return;
 	}
 	have_ip = ip;
+	have_prefix = leaf.prefix;
 	mask.s_addr = net_htonl(UINT32_MAX << (32u - leaf.prefix));
 	(void)net_if_ipv4_set_netmask_by_addr(overlay, &ip, &mask);
 	net_if_carrier_on(overlay);

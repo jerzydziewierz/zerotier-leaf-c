@@ -60,6 +60,7 @@ ARP for IPv4 uses the group "broadcast MAC, ADI = the IPv4 address". A stock sen
 ## Open points
 
 - ✅ [MEASURED] Size of a real configuration: the dictionary that a stock 1.16.2 controller gives a member of a small private network (one address, one route, default rules) is 1,121 bytes plain; the packet around it adds about 140. The leaf's plain buffer holds 2,020.
-- ⚠️ [UNVERIFIED] Request metadata: the leaf sends `v=7`, the vendor and version numbers and no `revr` (rules engine revision). By the comments in the reference, a controller then sends one "accept" rule and no capabilities or tags. The controller source is not in the tree that was read; the first run against a stock controller will show it.
+- ✅ [CODE] Request metadata: the leaf sends `v=7`, the vendor and version numbers and no `revr` (rules engine revision). A controller then sends one "accept" rule in place of the network's rules (`nonfree/controller/EmbeddedNetworkController.cpp:1917`), and the current configuration format because `v` is 6 or more (`:2287`). The first run against a stock controller will confirm it.
+- ⚠️ [CODE] A network without an explicit MTU gets 2800 (`Constants.hpp:290`); the leaf refuses a configuration with an MTU above 1500. The deployer sets the MTU on the controller.
 - 🌱 The same reading for peers 1.4 to 1.14.
 - 🌱 Verb counts from a run of the reference node (D-6), to confirm this table by measurement.

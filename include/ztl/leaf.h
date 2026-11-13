@@ -41,7 +41,8 @@
 #define ZTL_RETRY_MS        5000u   /* HELLO or configuration request without an answer */
 #define ZTL_PEER_TIMEOUT_MS 150000u /* a peer that sent nothing for this long is not reachable */
 #define ZTL_CONFIG_MS       60000u  /* configuration refresh (ZT_NETWORK_AUTOCONF_DELAY) */
-#define ZTL_COM_MS          300000u /* certificate push to each reachable peer */
+#define ZTL_COM_MS          120000u /* certificate push to each reachable peer; also after each new configuration.
+				      * A peer needs a certificate not older than the network's window (5 min at least) */
 #define ZTL_LIKE_MS         60000u  /* multicast subscription (ZT_MULTICAST_ANNOUNCE_PERIOD) */
 
 /* Protocol state for one pinned peer. */
@@ -76,7 +77,7 @@ struct ztl_leaf {
 	struct ztl_peer_state ps[ZTL_PEERS];
 	uint64_t next_id;     /* packet ID of the next packet sent */
 	uint64_t cfg_req_id;  /* packet ID of the configuration request that waits for its answer */
-	uint64_t cfg_ts;      /* time stamp of the configuration in use (controller clock) */
+	uint64_t cfg_ts;      /* newest configuration time stamp taken since the start (controller clock) */
 	uint32_t cfg_req_ms;  /* when the last configuration request was sent */
 	struct ztl_stats stats;
 	uint16_t mtu;         /* of the network, from the configuration */
