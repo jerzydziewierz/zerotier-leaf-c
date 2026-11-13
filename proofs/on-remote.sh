@@ -15,13 +15,17 @@
 #               deliberate errors whose name matches it
 #   ZTL_TAG     suffix for the remote directory and unit, to run a second
 #               copy beside a long run (for example ZTL_TAG=-b)
-# "fetch" copies proofs/out-* back; "wait" polls until the unit ends, then fetches.
+# "fetch" copies proofs/out-* back (a tagged copy: into proofs/out-tag<TAG>/);
+# "wait" polls until the unit ends, then fetches.
 set -u
 cd "$(dirname "$0")/.."
 H=${ZTL_REMOTE:-prover-host}; MEM=${ZTL_MEM:-20G}; TMO=${ZTL_TIME:-7200}; D=ztl${ZTL_TAG:-}; U=ztl-run${ZTL_TAG:-}
 # Run a command on the remote host; the exit status is that of ssh (grep
 # alone would report failure whenever the command prints nothing).
 r() { ssh -o BatchMode=yes "$H" "$@" 2>&1 | { grep -v '^Pseudo-terminal' || true; }; return "${PIPESTATUS[0]}"; }
+# Results of a tagged copy go to their own local directory, so that two
+# runs cannot mix their result files.
+L=proofs; [ -n "${ZTL_TAG:-}" ] && { L=proofs/out-tag${ZTL_TAG}; mkdir -p "$L"; }
 cmd=${1:-status}; shift || true
 case "$cmd" in
 start)
@@ -34,13 +38,13 @@ start)
 		proofs/run.sh $*" && echo "started $U on $H (limit $MEM, $TMO s): run.sh $*" ;;
 status) r "systemctl show $U -p ActiveState -p Result -p MemoryPeak --value | tr '\n' ' '; echo; cat $D/proofs/out-run.txt 2>/dev/null | cut -c1-220" ;;
 stop) r "sudo systemctl stop $U; echo stopped $U" ;;
-fetch) rsync -a "$H:$D/proofs/out-*" proofs/ && cut -c1-220 proofs/out-run.txt ;;
+fetch) rsync -a "$H:$D/proofs/out-*" "$L/" && cut -c1-220 "$L/out-run.txt" ;;
 wait)
 	while :; do
 		st=$(r "systemctl show $U -p ActiveState --value")
 		case "$st" in active|activating|deactivating) sleep 15 ;; *) break ;; esac
 	done
-	rsync -a "$H:$D/proofs/out-*" proofs/; cut -c1-220 proofs/out-run.txt
+	rsync -a "$H:$D/proofs/out-*" "$L/"; cut -c1-220 "$L/out-run.txt"
 	[ "$(r "systemctl show $U -p Result --value")" = success ] ;;
 *) sed -n '2,14p' "$0"; exit 2 ;;
 esac

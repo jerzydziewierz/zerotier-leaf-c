@@ -97,7 +97,7 @@ From two independent reviews (`reports/PROOFS.md`, "Independent reviews"): V-1..
 - ⚠️ A ghost counter that is compared with its entry value needs "below the maximum" as a precondition, which no long-running caller can prove. Count from the start of the call.
 - ⚠️ At `-Os` GCC turns a zeroing loop or a zero initializer into a call to `memset`; the runner fails on any undefined symbol that is not `ztl_`. The wipe loops carry an assembly barrier that also stops this.
 - ⚠️ WP has no notion of "not initialized": a read of a never-written field is some integer to it. Do not read fields of unused entries.
-- ⚠️ Two runner copies (`ZTL_TAG`) fetch into the same `proofs/out-*`: read a result file only after the run that wrote it.
+- A second runner copy (`ZTL_TAG`) keeps its results apart: remote directory `ztl<TAG>`, local `proofs/out-tag<TAG>/`.
 - All prover runs go through `proofs/on-remote.sh` (default `prover-host`) and `proofs/remote.sh` (default `user@big-prover-host`); none on the workstation.
 
 ## Supply chain
