@@ -18,6 +18,7 @@
 #include <zephyr/net/socket.h>
 #include <zephyr/random/random.h>
 #include <zephyr/sys/byteorder.h>
+#include <zephyr/version.h>
 #include "ztl_zephyr.h"
 
 BUILD_ASSERT(CONFIG_NET_TC_RX_COUNT >= 1 && !IS_ENABLED(CONFIG_NET_TC_RX_SKIP_FOR_HIGH_PRIO),
@@ -247,7 +248,14 @@ static int ztl_dev_init(const struct device *dev)
 	return 0;
 }
 
-static const struct ethernet_api ztl_api = {
+/* The driver interface got a new name after Zephyr 4.5. */
+#if ZEPHYR_VERSION_CODE >= ZEPHYR_VERSION(4, 5, 99)
+#define ZTL_ETH_API struct ethernet_driver_api
+#else
+#define ZTL_ETH_API struct ethernet_api
+#endif
+
+static const ZTL_ETH_API ztl_api = {
 	.iface_api.init = ztl_iface_init,
 	.send = ztl_dev_send,
 };
