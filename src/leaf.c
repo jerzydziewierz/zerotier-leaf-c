@@ -468,23 +468,23 @@ static unsigned int config_apply(struct ztl_leaf *l, const uint8_t *d, size_t n,
 	uint8_t self8[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
 
 	ztl_copy_bytes(&self8[3], l->node.self, ZTL_ADDR_LEN);
-	(void)ztl_dict_get_hex(d, n, "t", 1, &type);  /* absent: private */
-	(void)ztl_dict_get_hex(d, n, "ts", 2, &ts);
-	if (!ztl_dict_get_hex(d, n, "nwid", 4, &nwid) || nwid != ztl_be64(l->nwid) ||
-	    !ztl_dict_get_hex(d, n, "id", 2, &id) || id != ztl_be64(self8) || type != 0u ||
-	    !ztl_dict_get_hex(d, n, "mtu", 3, &mtu) || mtu < ZTL_MTU_MIN || mtu > ZTL_MTU_MAX ||
+	(void)ztl_dict_get_hex(d, n, ZTL_KEY("t"), &type);  /* absent: private */
+	(void)ztl_dict_get_hex(d, n, ZTL_KEY("ts"), &ts);
+	if (!ztl_dict_get_hex(d, n, ZTL_KEY("nwid"), &nwid) || nwid != ztl_be64(l->nwid) ||
+	    !ztl_dict_get_hex(d, n, ZTL_KEY("id"), &id) || id != ztl_be64(self8) || type != 0u ||
+	    !ztl_dict_get_hex(d, n, ZTL_KEY("mtu"), &mtu) || mtu < ZTL_MTU_MIN || mtu > ZTL_MTU_MAX ||
 	    (pushed && (l->flags & ZTL_L_CONFIG) != 0u && ts <= l->cfg_ts)) {
 		count(&l->stats.config_bad);
 		return 0;
 	}
-	const int an = ztl_dict_get(d, n, "I", 1, addrs, sizeof(addrs));
+	const int an = ztl_dict_get(d, n, ZTL_KEY("I"), addrs, sizeof(addrs));
 
 	if (an > 0) {
 		first_ipv4(addrs, (size_t)an, ip, &prefix);
 	}
 	/* The certificate goes straight to its place. If it is not complete,
 	 * the node has no configuration until the next one comes. */
-	const int cn = ztl_dict_get(d, n, "C", 1, l->com, ZTL_COM_MAX);
+	const int cn = ztl_dict_get(d, n, ZTL_KEY("C"), l->com, ZTL_COM_MAX);
 
 	if (cn < 1 || com_len_at(l->com, (size_t)cn) != (size_t)cn) {
 		l->com_len = 0;

@@ -19,7 +19,7 @@
   @ assigns out[0 .. cap - 1];
   @ ensures -1 <= \result <= cap;
   @*/
-int ztl_dict_get(const uint8_t *d, size_t n, const char *key, size_t klen, uint8_t *out, size_t cap);
+int ztl_dict_get(const uint8_t *d, size_t n, const uint8_t *key, size_t klen, uint8_t *out, size_t cap);
 
 /*
  * The value of a key as a number written with 1 to 16 hexadecimal digits.
@@ -32,6 +32,9 @@ int ztl_dict_get(const uint8_t *d, size_t n, const char *key, size_t klen, uint8
   @ assigns *v;
   @ ensures \result == 0 || \result == 1;
   @*/
-int ztl_dict_get_hex(const uint8_t *d, size_t n, const char *key, size_t klen, uint64_t *v);
+int ztl_dict_get_hex(const uint8_t *d, size_t n, const uint8_t *key, size_t klen, uint64_t *v);
+
+/* A dictionary key written as a string constant, with its length. */
+#define ZTL_KEY(text) ((const uint8_t *)(text)), (sizeof(text) - 1u)
 
 #endif

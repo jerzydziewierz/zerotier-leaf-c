@@ -61,7 +61,7 @@ static int value_copy(const uint8_t *d, size_t n, size_t at, uint8_t *out, size_
   @ ensures \result == 0 || \result == 1;
   @ ensures \result == 1 ==> at + klen < n;
   @*/
-static int key_at(const uint8_t *d, size_t n, size_t at, const char *key, size_t klen)
+static int key_at(const uint8_t *d, size_t n, size_t at, const uint8_t *key, size_t klen)
 {
 	if (klen >= n - at || d[at + klen] != '=') {
 		return 0;
@@ -71,14 +71,14 @@ static int key_at(const uint8_t *d, size_t n, size_t at, const char *key, size_t
 	  @ loop variant klen - k;
 	  @*/
 	for (size_t k = 0; k < klen; k++) {
-		if (d[at + k] != (uint8_t)key[k]) {
+		if (d[at + k] != key[k]) {
 			return 0;
 		}
 	}
 	return 1;
 }
 
-int ztl_dict_get(const uint8_t *d, size_t n, const char *key, size_t klen, uint8_t *out, size_t cap)
+int ztl_dict_get(const uint8_t *d, size_t n, const uint8_t *key, size_t klen, uint8_t *out, size_t cap)
 {
 	size_t i = 0;
 
@@ -91,7 +91,9 @@ int ztl_dict_get(const uint8_t *d, size_t n, const char *key, size_t klen, uint8
 		if (key_at(d, n, i, key, klen)) {
 			return value_copy(d, n, i + klen + 1u, out, cap);
 		}
-		/*@ loop invariant \at(i, LoopCurrent) <= i <= n;
+		/*@ ghost size_t line = i; */ /* start of this line, for the proof that i grows */
+
+		/*@ loop invariant line <= i <= n;
 		  @ loop assigns i;
 		  @ loop variant n - i;
 		  @*/
@@ -106,7 +108,7 @@ int ztl_dict_get(const uint8_t *d, size_t n, const char *key, size_t klen, uint8
 	return -1;
 }
 
-int ztl_dict_get_hex(const uint8_t *d, size_t n, const char *key, size_t klen, uint64_t *v)
+int ztl_dict_get_hex(const uint8_t *d, size_t n, const uint8_t *key, size_t klen, uint64_t *v)
 {
 	uint8_t t[16];
 	const int len = ztl_dict_get(d, n, key, klen, t, sizeof(t));

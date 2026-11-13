@@ -259,16 +259,16 @@ static void test_dict(char *s)
 		exit(2);
 	}
 	memcpy(d, dict, dl);
-	const int r = ztl_dict_get(d, dl, (const char *)key, kl, got, sizeof(got));
+	const int r = ztl_dict_get(d, dl, key, kl, got, sizeof(got));
 
 	if (absent) {
 		CHECK(r == -1, "dictionary: value found for an absent key");
 	} else {
 		CHECK(r == (int)wl && memcmp(got, want, wl) == 0, "dictionary: value differs (%d, expected %zu bytes)", r, wl);
-		CHECK(ztl_dict_get(d, dl, (const char *)key, kl, out, wl) == (int)wl && memcmp(out, want, wl) == 0,
+		CHECK(ztl_dict_get(d, dl, key, kl, out, wl) == (int)wl && memcmp(out, want, wl) == 0,
 		      "dictionary: value differs in a buffer of its exact size");
 		if (wl > 0) {
-			CHECK(ztl_dict_get(d, dl, (const char *)key, kl, out, wl - 1u) == -1,
+			CHECK(ztl_dict_get(d, dl, key, kl, out, wl - 1u) == -1,
 			      "dictionary: buffer one byte too small accepted");
 		}
 	}
