@@ -181,7 +181,7 @@ src/lz4.c|vectors|lz4: match length without the minimum of 4|s/#define LZ4_MIN_M
 src/lz4.c|vectors|lz4: offset bytes in the wrong order|s/const size_t off = src\[ip\] + 256u \* src\[ip + 1u\];/const size_t off = 256u * src[ip] + src[ip + 1u];/
 src/lz4.c|vectors|lz4: length extension stops after one byte|s/		if (b != LZ4_BYTE_MORE) {/		if (1) {/
 src/lz4.c|vectors|lz4: output buffer one byte too small accepted|s/if (lit > n - ip || lit > cap - op) {/if (lit > n - ip || lit > cap - op + 1u) {/
-src/dict.c|vectors|dict: key accepted without the equals sign after it|s/if (klen < n - i \&\& d\[i + klen\] == '=' \&\& /if (klen < n - i \&\& /
+src/dict.c|vectors|dict: key accepted without the equals sign after it|s/	if (klen >= n - at || d\[at + klen\] != '=') {/	if (klen >= n - at) {/
 src/dict.c|vectors|dict: escape for the zero byte not decoded|s/(c == '0') ? 0u : //
 src/dict.c|vectors|dict: a value longer than the buffer is cut, not refused|s/			return -1; \/\* the value does not fit \*\//			return (int)j;/
 src/dict.c|vectors|dict: value not ended by a carriage return|s/return c == 0u || c == DICT_LF || c == DICT_CR;/return c == 0u || c == DICT_LF;/
@@ -191,7 +191,7 @@ src/leaf.c|proto|leaf: HELLO says protocol version 13|s/	b\[0\] = ZTL_PROTO_VERS
 src/leaf.c|proto|leaf: OK(HELLO) says protocol version 13|s/	o\[8\] = ZTL_PROTO_VERSION;/	o[8] = 13u;/
 src/leaf.c|proto|leaf: HELLO with a foreign identity answered|s/if (n < HELLO_FIXED + IDENTITY_LEN || !ztl_bytes_eq(\&b\[HELLO_FIXED\], \&pkt\[ZTL_PKT_IDX_SRC\], ZTL_ADDR_LEN)) {/if (n < HELLO_FIXED + IDENTITY_LEN) {/
 src/leaf.c|proto|leaf: frame delivered without a configuration|/count(\&l->stats.rx_no_config);/{n;s/return 0;/;/}
-src/leaf.c|proto|leaf: frame with a foreign source delivered|s/(src != NULL \&\& !ztl_bytes_eq(src, peer_mac, ZTL_ETH_ALEN))/0/
+src/leaf.c|proto|leaf: frame with a foreign source delivered|s/(src != NULL \&\& !ztl_bytes_eq(src, peer_mac, ZTL_ETH_ALEN))/(src != NULL \&\& !ztl_bytes_eq(src, src, ZTL_ETH_ALEN))/
 src/leaf.c|proto|leaf: frame longer than the MTU delivered|s/if (len < 1u || len > l->mtu || (src/if (len < 1u || (src/
 src/leaf.c|proto|leaf: frame of another network delivered|s/if (n <= FRAME_HDR || !ztl_bytes_eq(b, l->nwid, ZTL_NWID_LEN)) {/if (n <= FRAME_HDR) {/
 src/leaf.c|proto|leaf: frame for a third station delivered|s/if (!ztl_bytes_eq(to, l->mac, ZTL_ETH_ALEN) \&\& (to\[0\] \& 0x01u) == 0u) {/if (0) {/
@@ -210,7 +210,7 @@ src/leaf.c|proto|leaf: certificate with a wrong length accepted|s/if (cn < 1 || 
 src/leaf.c|proto|leaf: ECHO longer than a packet answered|s/	if (n > ZTL_PKT_MAX - (ZTL_PKT_MIN + OK_HDR)) {/	if (0) {/
 src/leaf.c|proto|leaf: "fragmented" flag not set on a packet in two parts|s/		tx\[ZTL_PKT_IDX_FLAGS\] = ZTL_FLAG_FRAGMENTED;/		;/
 src/leaf.c|proto|leaf: fragment header without the destination|s/ztl_copy_bytes(\&pkt\[h\], pkt, ID_LEN + ZTL_ADDR_LEN);/ztl_copy_bytes(\&pkt[h], pkt, ID_LEN);/
-src/leaf.c|proto|leaf: no new certificate after the peer asked|s/		l->ps\[i\].flags \&= (uint8_t)~(ZTL_P_COM_SENT | ZTL_P_LIKE_SENT);/		;/
+src/leaf.c|proto|leaf: no new certificate after the peer asked|s/		l->ps\[i\].flags \&= (uint8_t)~(ZTL_P_COM_SENT | ZTL_P_LIKE_SENT);/		l->ps[i].flags \&= 0xffu;/
 src/leaf.c|proto|leaf: encrypted packets to a peer that was never heard|s/^\tif ((s->flags \& ZTL_P_SEEN) == 0u) {/\tif (0) {/
 src/leaf.c|proto|leaf: a silent peer is never forgotten|s/ztl_age_ms(now_ms, s->rx_ms) > ZTL_PEER_TIMEOUT_MS/0/
 src/leaf.c|proto|leaf: unicast frame sent to a peer that does not own the address|s/	if (!ztl_bytes_eq(dst, peer_mac, ZTL_ETH_ALEN)) {/	if (0) {/
@@ -221,6 +221,6 @@ MUT
 	*) echo "unknown tool $t"; exit 2 ;;
 	esac
 	[ $s -ne 0 ] && rc=1
-	echo "== $t $([ $s -eq 0 ] && echo PASS || echo FAIL): $(grep -E 'VERIFICATION|failed|covered|Proved goals|alarms? generated|unknown +[0-9]+ invalid|Timeout|Failed|bytes:|rejected|SURVIVED|NOT APPLIED|BROKEN|rror' $o | tr -s ' ' | tr '\n' ';')"
+	echo "== $t $([ $s -eq 0 ] && echo PASS || echo FAIL): $(grep -E 'VERIFICATION|failed|covered|Proved goals|alarms? generated|unknown +[0-9]+ invalid|Timeout|Failed|bytes:|rejected|SURVIVED|NOT APPLIED|BROKEN|rror|ERROR: AddressSanitizer' $o | tr -s ' ' | tr '\n' ';')"
 done
 exit $rc

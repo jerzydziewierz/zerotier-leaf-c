@@ -1,0 +1,4 @@
+name: zerotier_leaf_c
+build:
+  cmake: zephyr
+  kconfig: zephyr/Kconfig

@@ -323,5 +323,61 @@ int main(void)
 			putchar('\n');
 		}
 	}
+
+	// Dictionaries that Dictionary::add() never makes, read by the
+	// reference Dictionary::get(): carriage return as line end, no line
+	// end after the last value, a line without "=", empty values, a key
+	// twice (the first counts), a zero byte in the middle (the end).
+	{
+		static const char* const texts[] = {
+			"v=7\rmtu=500\rt=0",
+			"v=7\r\nmtu=500\r\nt=0\r\n",
+			"\n\nv=7\n\nmtu=500",
+			"v\nmtu=500\nvv=1\nv=7",
+			"v=\nmtu=\nt=0",
+			"t=1\nt=2\ntt=3",
+			"v=7\nmtu=5\\",
+			"v=a\\eb\\\\c\\nd\\re\\0f\\xg\nt=0",
+		};
+		static const char* const ask[] = { "v", "mtu", "t", "tt", "vv", "m" };
+		for (const char* text : texts) {
+			for (const char* key : ask) {
+				Dictionary<2048> d(text);
+				char value[2048];
+				const int n = d.get(key, value, sizeof(value));
+				fputs("D ", stdout);
+				hex((const uint8_t*)text, strlen(text));
+				putchar(' ');
+				hex((const uint8_t*)key, strlen(key));
+				putchar(' ');
+				if (n >= 0) {
+					hex((const uint8_t*)value, (size_t)n);
+				}
+				else {
+					fputs("none", stdout);
+				}
+				putchar('\n');
+			}
+		}
+		// A zero byte ends the dictionary: what follows is not read.
+		static const uint8_t cut[] = { 'v', '=', '7', '\n', 't', '=', '0', 0, '\n', 'm', 't', 'u', '=', '5' };
+		for (const char* key : ask) {
+			Dictionary<2048> d((const char*)cut, sizeof(cut));
+			char value[2048];
+			const int n = d.get(key, value, sizeof(value));
+			fputs("D ", stdout);
+			hex(cut, sizeof(cut));
+			putchar(' ');
+			hex((const uint8_t*)key, strlen(key));
+			putchar(' ');
+			if (n >= 0) {
+				hex((const uint8_t*)value, (size_t)n);
+			}
+			else {
+				fputs("none", stdout);
+			}
+			putchar('\n');
+		}
+	}
 	return 0;
 }

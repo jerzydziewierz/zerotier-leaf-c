@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: Apache-2.0
+config ZTL
+	bool "ZeroTier leaf in C (zerotier-leaf-c)"
+	depends on NET_L2_ETHERNET && NET_IPV4 && NET_UDP && NET_SOCKETS
+	help
+	  A ZeroTier protocol v1 node for one network and up to 7 pinned
+	  peers, as a virtual Ethernet interface. It has no heap and no
+	  public-key cryptography; the application gives it the address,
+	  the public key and one pairwise key for each peer (provisioning).
+	  It needs a cryptographically secure random source with hardware
+	  entropy for the first packet ID.
+
+if ZTL
+
+config ZTL_WORKER_STACK_SIZE
+	int "Stack of the leaf thread"
+	default 3072
+	help
+	  The receive path of the leaf uses about 550 bytes; the rest is
+	  for the socket calls of Zephyr.
+
+config ZTL_WORKER_PRIORITY
+	int "Priority of the leaf thread"
+	default 7
+
+config ZTL_RX_BATCH
+	int "Datagrams handled before other threads can run"
+	default 8
+	range 1 64
+
+config ZTL_SHELL
+	bool "Shell command ztl (status)"
+	depends on SHELL
+
+endif

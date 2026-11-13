@@ -33,7 +33,7 @@ start)
 	r "cd $D && rm -rf proofs/out-*; sudo systemctl reset-failed $U 2>/dev/null; sudo systemd-run --quiet --unit=$U \
 		-p User=\$(id -un) -p WorkingDirectory=\$PWD -p MemoryMax=$MEM -p MemorySwapMax=0 -p RuntimeMaxSec=$TMO \
 		-p StandardOutput=truncate:\$PWD/proofs/out-run.txt -p StandardError=inherit \
-		-E HOME=\$HOME -E PATH=\$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin -E ZTL_ON_REMOTE=1 ${ZTL_WP_UNITS:+-E ZTL_WP_UNITS=$ZTL_WP_UNITS} ${ZTL_MUT_ONLY:+-E ZTL_MUT_ONLY=$ZTL_MUT_ONLY} \
+		-E HOME=\$HOME -E PATH=\$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin -E ZTL_ON_REMOTE=1 ${ZTL_WP_UNITS:+-E ZTL_WP_UNITS=$ZTL_WP_UNITS} ${ZTL_MUT_ONLY:+-E 'ZTL_MUT_ONLY=$ZTL_MUT_ONLY'} \
 		-E ZTL_CC=\$HOME/ztl-sdk/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc \
 		proofs/run.sh $*" && echo "started $U on $H (limit $MEM, $TMO s): run.sh $*" ;;
 status) r "systemctl show $U -p ActiveState -p Result -p MemoryPeak --value | tr '\n' ' '; echo; cat $D/proofs/out-run.txt 2>/dev/null | cut -c1-220" ;;

@@ -10,7 +10,10 @@
 #define DICT_LF 10u
 #define DICT_CR 13u
 
-/*@ assigns \nothing; */
+/*@ assigns \nothing;
+  @ ensures \result == 0 || \result == 1;
+  @ ensures \result == 1 <==> (c == 0 || c == DICT_LF || c == DICT_CR);
+  @*/
 static int line_end(uint8_t c)
 {
 	return c == 0u || c == DICT_LF || c == DICT_CR;
@@ -51,17 +54,41 @@ static int value_copy(const uint8_t *d, size_t n, size_t at, uint8_t *out, size_
 	return (int)j;
 }
 
+/* 1 if the line that starts at d[at] is "key=...". */
+/*@ requires n <= ZTL_PKT_MAX && at <= n && klen <= 8;
+  @ requires \valid_read(d + (0 .. n - 1)) && \valid_read(key + (0 .. klen - 1));
+  @ assigns \nothing;
+  @ ensures \result == 0 || \result == 1;
+  @ ensures \result == 1 ==> at + klen < n;
+  @*/
+static int key_at(const uint8_t *d, size_t n, size_t at, const char *key, size_t klen)
+{
+	if (klen >= n - at || d[at + klen] != '=') {
+		return 0;
+	}
+	/*@ loop invariant 0 <= k <= klen;
+	  @ loop assigns k;
+	  @ loop variant klen - k;
+	  @*/
+	for (size_t k = 0; k < klen; k++) {
+		if (d[at + k] != (uint8_t)key[k]) {
+			return 0;
+		}
+	}
+	return 1;
+}
+
 int ztl_dict_get(const uint8_t *d, size_t n, const char *key, size_t klen, uint8_t *out, size_t cap)
 {
 	size_t i = 0;
 
 	/*@ loop invariant 0 <= i <= n;
-	  @ loop assigns i, out[0 .. cap - 1];
+	  @ loop assigns i;
 	  @ loop variant n - i;
 	  @*/
 	while (i < n && d[i] != 0u) {
 		/* i is the start of a line */
-		if (klen < n - i && d[i + klen] == '=' && ztl_bytes_eq(&d[i], (const uint8_t *)key, klen)) {
+		if (key_at(d, n, i, key, klen)) {
 			return value_copy(d, n, i + klen + 1u, out, cap);
 		}
 		/*@ loop invariant \at(i, LoopCurrent) <= i <= n;
@@ -71,9 +98,10 @@ int ztl_dict_get(const uint8_t *d, size_t n, const char *key, size_t klen, uint8
 		while (i < n && !line_end(d[i])) {
 			i++;
 		}
-		if (i < n && d[i] != 0u) {
-			i++;
+		if (i == n || d[i] == 0u) {
+			break; /* the end of the dictionary */
 		}
+		i++; /* the line feed or carriage return */
 	}
 	return -1;
 }
