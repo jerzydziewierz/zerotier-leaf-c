@@ -148,6 +148,12 @@ void ztl_auth_seal(const uint8_t key[ZTL_KEY_LEN], uint8_t *ZTL_COUNT(len) pkt, 
   @   out->body_len <= ZTL_PKT_MAX - ZTL_PKT_MIN &&
   @   // the delivered body is the rest of exactly the packet that was authenticated
   @   out->body == ztl_gh_auth_pkt + ZTL_PKT_MIN && out->body_len == ztl_gh_auth_len - ZTL_PKT_MIN;
+  @ // The delivered body lies in the datagram or in the reassembly memory of
+  @ // the node, and the whole packet around it can be read and written.
+  @ ensures \result == 1 ==>
+  @   \valid(out->body - ZTL_PKT_MIN + (0 .. ZTL_PKT_MIN + out->body_len - 1)) &&
+  @   ((out->body == dgram + ZTL_PKT_MIN && out->body_len == len - ZTL_PKT_MIN) ||
+  @    (\exists integer i; 0 <= i < ZTL_RX_SLOTS && out->body == &n->reasm.slot[i].buf[0] + ZTL_PKT_MIN));
   @ // No delivery: the output record is not written.
   @ ensures \result == 0 ==>
   @   out->peer == \old(out->peer) && out->verb == \old(out->verb) &&

@@ -34,7 +34,4 @@ int ztl_dict_get(const uint8_t *d, size_t n, const uint8_t *key, size_t klen, ui
   @*/
 int ztl_dict_get_hex(const uint8_t *d, size_t n, const uint8_t *key, size_t klen, uint64_t *v);
 
-/* A dictionary key written as a string constant, with its length. */
-#define ZTL_KEY(text) ((const uint8_t *)(text)), (sizeof(text) - 1u)
-
 #endif

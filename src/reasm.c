@@ -33,11 +33,6 @@ void ztl_move_down(uint8_t *buf, size_t to, size_t from, size_t n)
 	}
 }
 
-/*@ requires \valid(r);
-  @ assigns r->slot[0 .. ZTL_RX_SLOTS - 1].have;
-  @ ensures \forall integer i; 0 <= i < ZTL_RX_SLOTS ==> r->slot[i].have == 0;
-  @ ensures ztl_reasm_valid(r);
-  @*/
 void ztl_reasm_init(struct ztl_reasm *r)
 {
 	/*@ loop invariant 0 <= i <= ZTL_RX_SLOTS;

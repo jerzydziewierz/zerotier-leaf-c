@@ -54,7 +54,7 @@
  * tags (reference controller, EmbeddedNetworkController.cpp: no rules
  * engine revision in the request): this leaf admits peers by pinning and
  * does not evaluate rules. */
-static const char cfg_meta[] = "v=7\nvend=1\npv=b\nmajv=0\nminv=0\nrevv=1";
+static const uint8_t cfg_meta[] = "v=7\nvend=1\npv=b\nmajv=0\nminv=0\nrevv=1";
 #define CFG_META_LEN (sizeof(cfg_meta) - 1u)
 #define CFG_REQ_LEN  (ZTL_PKT_MIN + ZTL_NWID_LEN + 2u + CFG_META_LEN + 16u)
 
@@ -68,8 +68,25 @@ _Static_assert(ZTL_PEERS <= 255u, "peer index in 8 bits");
 
 static const uint8_t mac_broadcast[ZTL_ETH_ALEN] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 
+/* Keys of the configuration dictionary that the leaf reads. */
+static const uint8_t key_t[] = { 't' };
+static const uint8_t key_ts[] = { 't', 's' };
+static const uint8_t key_nwid[] = { 'n', 'w', 'i', 'd' };
+static const uint8_t key_id[] = { 'i', 'd' };
+static const uint8_t key_mtu[] = { 'm', 't', 'u' };
+static const uint8_t key_cap_i[] = { 'I' };
+static const uint8_t key_cap_c[] = { 'C' };
+
+/* Parts of contracts that many functions share. */
+#define LEAF_BUF(tx) (tx) + (0 .. ZTL_PKT_MAX - 1)
+#define LEAF_NEXT_ID(old) (((old) == 18446744073709551615) ? 0 : (old) + 1)
+#define LEAF_CONFIG_STATE \
+	l->com[0 .. ZTL_COM_MAX - 1], l->com_len, l->have_config, l->mtu, l->prefix, l->ip[0 .. 3], l->cfg_ts, \
+	l->stats.configs, l->stats.config_bad, l->stats.rx_bad_form, l->ps[0 .. ZTL_PEERS - 1]
+
 /*@ requires \valid(c);
   @ assigns *c;
+  @ ensures \old(*c) <= *c <= \old(*c) + 1;
   @*/
 static void count(uint32_t *c)
 {
@@ -114,6 +131,10 @@ void ztl_mac_of(uint8_t mac[ZTL_ETH_ALEN], const uint8_t addr[ZTL_ADDR_LEN], con
 }
 
 /* A peer that nothing was sent to and nothing was heard from. */
+/*@ requires \valid(s);
+  @ assigns *s;
+  @ ensures s->hello_sent == 0 && s->hello_wait == 0 && s->seen == 0 && s->com_sent == 0 && s->like_sent == 0;
+  @*/
 static void peer_state_clear(struct ztl_peer_state *s)
 {
 	s->hello_id = 0;
@@ -132,6 +153,11 @@ void ztl_init(struct ztl_leaf *l, const uint8_t self[ZTL_ADDR_LEN], const uint8_
 	      const uint8_t nwid[ZTL_NWID_LEN], uint64_t first_packet_id)
 {
 	ztl_copy_bytes(l->node.self, self, ZTL_ADDR_LEN);
+	/*@ loop invariant 0 <= i <= ZTL_PEERS;
+	  @ loop invariant \forall integer k; 0 <= k < i ==> l->node.peer[k].pinned == 0;
+	  @ loop assigns i, l->node.peer[0 .. ZTL_PEERS - 1].pinned, l->ps[0 .. ZTL_PEERS - 1];
+	  @ loop variant ZTL_PEERS - i;
+	  @*/
 	for (unsigned int i = 0; i < ZTL_PEERS; i++) {
 		l->node.peer[i].pinned = 0;
 		peer_state_clear(&l->ps[i]);
@@ -176,6 +202,10 @@ int ztl_pin(struct ztl_leaf *l, const uint8_t addr[ZTL_ADDR_LEN], const uint8_t 
 	if (ztl_bytes_eq(addr, l->node.self, ZTL_ADDR_LEN)) {
 		return -1;
 	}
+	/*@ loop invariant 0 <= i <= ZTL_PEERS && 0 <= free_at <= ZTL_PEERS;
+	  @ loop assigns i, free_at;
+	  @ loop variant ZTL_PEERS - i;
+	  @*/
 	for (unsigned int i = 0; i < ZTL_PEERS; i++) {
 		if (!l->node.peer[i].pinned) {
 			if (free_at == ZTL_PEERS) {
@@ -202,6 +232,12 @@ int ztl_pin(struct ztl_leaf *l, const uint8_t addr[ZTL_ADDR_LEN], const uint8_t 
 /* ---- Sending ---- */
 
 /* Start a packet to peer i: header with a new packet ID, flags and MAC zero. */
+/*@ requires \valid(l) && i < ZTL_PEERS && \valid(tx + (0 .. ZTL_PKT_MIN - 1));
+  @ requires \separated(l, tx + (0 .. ZTL_PKT_MIN - 1));
+  @ assigns l->next_id, tx[0 .. ZTL_PKT_MIN - 1];
+  @ ensures \result == \old(l->next_id) && l->next_id == LEAF_NEXT_ID(\old(l->next_id));
+  @ ensures tx[ZTL_PKT_IDX_VERB] == verb;
+  @*/
 static uint64_t begin(struct ztl_leaf *l, unsigned int i, uint8_t *tx, uint8_t verb)
 {
 	const uint64_t id = l->next_id;
@@ -217,6 +253,13 @@ static uint64_t begin(struct ztl_leaf *l, unsigned int i, uint8_t *tx, uint8_t v
 
 /* Close a packet of len bytes to peer i: "fragmented" flag if it needs two
  * datagrams (the flag is part of the per-packet key), encryption, MAC. */
+/*@ requires \valid(l) && i < ZTL_PEERS && ZTL_PKT_MIN <= len <= ZTL_PKT_MAX && \valid(tx + (0 .. len - 1));
+  @ requires \separated(l, tx + (0 .. len - 1));
+  @ requires encrypt == 0 || encrypt == 1;
+  @ requires encrypt == 0 ==> tx[ZTL_PKT_IDX_VERB] == VERB_HELLO;
+  @ assigns tx[ZTL_PKT_IDX_FLAGS .. len - 1], l->stats.tx_packets;
+  @ ensures \result == len;
+  @*/
 static size_t finish(struct ztl_leaf *l, unsigned int i, uint8_t *tx, size_t len, int encrypt)
 {
 	if (len > ZTL_UDP_MAX) {
@@ -249,6 +292,11 @@ size_t ztl_tx_second(uint8_t pkt[ZTL_PKT_MAX], size_t len, size_t *at)
 	return len - h;
 }
 
+/*@ requires \valid(l) && ztl_leaf_ok(l) && i < ZTL_PEERS && \valid(LEAF_BUF(tx)) && \separated(l, LEAF_BUF(tx));
+  @ assigns tx[0 .. ZTL_PKT_MAX - 1], l->next_id, l->stats.tx_packets, l->ps[i];
+  @ ensures ZTL_PKT_MIN <= \result <= ZTL_UDP_MAX;
+  @ ensures ztl_leaf_ok(l) && l->next_id == LEAF_NEXT_ID(\old(l->next_id));
+  @*/
 static size_t send_hello(struct ztl_leaf *l, unsigned int i, uint32_t now_ms, uint8_t *tx)
 {
 	const uint64_t id = begin(l, i, tx, VERB_HELLO);
@@ -273,6 +321,11 @@ static size_t send_hello(struct ztl_leaf *l, unsigned int i, uint32_t now_ms, ui
 	return finish(l, i, tx, HELLO_LEN, 0);
 }
 
+/*@ requires \valid(l) && ztl_leaf_ok(l) && i < ZTL_PEERS && \valid(LEAF_BUF(tx)) && \separated(l, LEAF_BUF(tx));
+  @ assigns tx[0 .. ZTL_PKT_MAX - 1], l->next_id, l->stats.tx_packets, l->ps[i], l->cfg_req_id, l->cfg_req_ms, l->req_sent, l->req_wait;
+  @ ensures ZTL_PKT_MIN <= \result <= ZTL_UDP_MAX;
+  @ ensures ztl_leaf_ok(l) && l->next_id == LEAF_NEXT_ID(\old(l->next_id));
+  @*/
 static size_t send_config_request(struct ztl_leaf *l, unsigned int i, uint32_t now_ms, uint8_t *tx)
 {
 	const uint64_t id = begin(l, i, tx, VERB_NETWORK_CONFIG_REQUEST);
@@ -280,7 +333,7 @@ static size_t send_config_request(struct ztl_leaf *l, unsigned int i, uint32_t n
 
 	ztl_copy_bytes(b, l->nwid, ZTL_NWID_LEN);
 	ztl_put_be16(&b[ZTL_NWID_LEN], (uint16_t)CFG_META_LEN);
-	ztl_copy_bytes(&b[ZTL_NWID_LEN + 2u], (const uint8_t *)cfg_meta, CFG_META_LEN);
+	ztl_copy_bytes(&b[ZTL_NWID_LEN + 2u], cfg_meta, CFG_META_LEN);
 	/* Revision and time stamp of the configuration in use: the
 	 * controller does not read them; zero. */
 	zero(&b[ZTL_NWID_LEN + 2u + CFG_META_LEN], 16u);
@@ -292,6 +345,11 @@ static size_t send_config_request(struct ztl_leaf *l, unsigned int i, uint32_t n
 }
 
 /* NETWORK_CREDENTIALS with the own certificate of membership and nothing else. */
+/*@ requires \valid(l) && ztl_leaf_ok(l) && i < ZTL_PEERS && \valid(LEAF_BUF(tx)) && \separated(l, LEAF_BUF(tx));
+  @ assigns tx[0 .. ZTL_PKT_MAX - 1], l->next_id, l->stats.tx_packets, l->ps[i];
+  @ ensures ZTL_PKT_MIN <= \result <= ZTL_UDP_MAX;
+  @ ensures ztl_leaf_ok(l) && l->next_id == LEAF_NEXT_ID(\old(l->next_id));
+  @*/
 static size_t send_com(struct ztl_leaf *l, unsigned int i, uint32_t now_ms, uint8_t *tx)
 {
 	(void)begin(l, i, tx, VERB_NETWORK_CREDENTIALS);
@@ -305,6 +363,11 @@ static size_t send_com(struct ztl_leaf *l, unsigned int i, uint32_t now_ms, uint
 /* MULTICAST_LIKE: the groups this node listens to. Broadcast with the own
  * IPv4 address as extra group number is the group of ARP requests for
  * that address; broadcast with 0 is all other broadcast. */
+/*@ requires \valid(l) && ztl_leaf_ok(l) && i < ZTL_PEERS && \valid(LEAF_BUF(tx)) && \separated(l, LEAF_BUF(tx));
+  @ assigns tx[0 .. ZTL_PKT_MAX - 1], l->next_id, l->stats.tx_packets, l->ps[i];
+  @ ensures ZTL_PKT_MIN <= \result <= ZTL_UDP_MAX;
+  @ ensures ztl_leaf_ok(l) && l->next_id == LEAF_NEXT_ID(\old(l->next_id));
+  @*/
 static size_t send_like(struct ztl_leaf *l, unsigned int i, uint32_t now_ms, uint8_t *tx)
 {
 	size_t len = ZTL_PKT_MIN;
@@ -326,6 +389,15 @@ static size_t send_like(struct ztl_leaf *l, unsigned int i, uint32_t now_ms, uin
 }
 
 /* The packet that is due for peer i, or 0. */
+/*@ requires \valid(l) && ztl_leaf_ok(l) && i < ZTL_PEERS && \valid(LEAF_BUF(tx)) && \separated(l, LEAF_BUF(tx));
+  @ assigns tx[0 .. ZTL_PKT_MAX - 1], l->next_id, l->stats.tx_packets, l->ps[i], l->cfg_req_id, l->cfg_req_ms,
+  @         l->req_sent, l->req_wait;
+  @ ensures \result == 0 || ZTL_PKT_MIN <= \result <= ZTL_UDP_MAX;
+  @ ensures ztl_leaf_ok(l);
+  @ // One packet ID for each packet, and none without a packet.
+  @ ensures \result == 0 ==> l->next_id == \old(l->next_id);
+  @ ensures \result != 0 ==> l->next_id == LEAF_NEXT_ID(\old(l->next_id));
+  @*/
 static size_t poll_peer(struct ztl_leaf *l, unsigned int i, uint32_t now_ms, uint8_t *tx)
 {
 	struct ztl_peer_state *s = &l->ps[i];
@@ -374,6 +446,11 @@ static size_t poll_peer(struct ztl_leaf *l, unsigned int i, uint32_t now_ms, uin
 
 size_t ztl_poll(struct ztl_leaf *l, uint32_t now_ms, uint8_t tx[ZTL_PKT_MAX], unsigned int *peer)
 {
+	/*@ loop invariant 0 <= i <= ZTL_PEERS && ztl_leaf_ok(l) && l->next_id == \at(l->next_id, Pre);
+	  @ loop assigns i, tx[0 .. ZTL_PKT_MAX - 1], *peer, l->next_id, l->stats.tx_packets, l->ps[0 .. ZTL_PEERS - 1],
+	  @             l->cfg_req_id, l->cfg_req_ms, l->req_sent, l->req_wait;
+	  @ loop variant ZTL_PEERS - i;
+	  @*/
 	for (unsigned int i = 0; i < ZTL_PEERS; i++) {
 		if (l->node.peer[i].pinned) {
 			const size_t n = poll_peer(l, i, now_ms, tx);
@@ -433,6 +510,10 @@ size_t ztl_frame_to(struct ztl_leaf *l, unsigned int i, const uint8_t dst[ZTL_ET
 /* Length of the certificate of membership at c, if it is complete within
  * avail bytes; else 0. Layout: 1, count (2), count times three 8-byte
  * values, signer address (5), and a signature if the signer is not 0. */
+/*@ requires avail <= ZTL_PKT_MAX && \valid_read(c + (0 .. avail - 1));
+  @ assigns \nothing;
+  @ ensures \result == 0 || (8 <= \result <= avail && \result <= ZTL_COM_MAX);
+  @*/
 static size_t com_len_at(const uint8_t *c, size_t avail)
 {
 	static const uint8_t no_signer[ZTL_ADDR_LEN];
@@ -458,11 +539,20 @@ static size_t com_len_at(const uint8_t *c, size_t avail)
 
 /* The first IPv4 address with a network part of 1 to 32 bits in a list of
  * addresses (each: 4, address, 2 bytes prefix; or 6, 16 bytes, 2 bytes). */
+/*@ requires n <= 64 && \valid_read(v + (0 .. n - 1)) && \valid(ip + (0 .. 3)) && \valid(prefix);
+  @ requires \separated(ip + (0 .. 3), v + (0 .. n - 1), prefix);
+  @ assigns ip[0 .. 3], *prefix;
+  @ ensures *prefix <= 32;
+  @*/
 static void first_ipv4(const uint8_t *v, size_t n, uint8_t ip[4], uint8_t *prefix)
 {
 	size_t i = 0;
 
 	*prefix = 0;
+	/*@ loop invariant 0 <= i <= n && *prefix == 0;
+	  @ loop assigns i;
+	  @ loop variant n - i;
+	  @*/
 	while (i < n) {
 		if (v[i] == 4u && n - i >= 7u) {
 			const uint16_t bits = ztl_be16(&v[i + 5u]);
@@ -490,6 +580,11 @@ static void first_ipv4(const uint8_t *v, size_t n, uint8_t ip[4], uint8_t *prefi
  * The signature of the controller is not checked: the packet came from the
  * pinned controller under the key shared with it (design decision D-8).
  */
+/*@ requires \valid(l) && ztl_leaf_ok(l) && n <= ZTL_PKT_MAX && \valid_read(d + (0 .. n - 1));
+  @ requires \separated(d + (0 .. n - 1), &l->com[0 .. ZTL_COM_MAX - 1]);
+  @ assigns LEAF_CONFIG_STATE;
+  @ ensures ztl_leaf_ok(l);
+  @*/
 static unsigned int config_apply(struct ztl_leaf *l, const uint8_t *d, size_t n, int pushed)
 {
 	uint64_t nwid = 0, id = 0, type = 0, mtu = 0, ts = 0;
@@ -499,23 +594,23 @@ static unsigned int config_apply(struct ztl_leaf *l, const uint8_t *d, size_t n,
 	uint8_t self8[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
 
 	ztl_copy_bytes(&self8[3], l->node.self, ZTL_ADDR_LEN);
-	(void)ztl_dict_get_hex(d, n, ZTL_KEY("t"), &type);  /* absent: private */
-	(void)ztl_dict_get_hex(d, n, ZTL_KEY("ts"), &ts);
-	if (!ztl_dict_get_hex(d, n, ZTL_KEY("nwid"), &nwid) || nwid != ztl_be64(l->nwid) ||
-	    !ztl_dict_get_hex(d, n, ZTL_KEY("id"), &id) || id != ztl_be64(self8) || type != 0u ||
-	    !ztl_dict_get_hex(d, n, ZTL_KEY("mtu"), &mtu) || mtu < ZTL_MTU_MIN || mtu > ZTL_MTU_MAX ||
+	(void)ztl_dict_get_hex(d, n, key_t, sizeof(key_t), &type);  /* absent: private */
+	(void)ztl_dict_get_hex(d, n, key_ts, sizeof(key_ts), &ts);
+	if (!ztl_dict_get_hex(d, n, key_nwid, sizeof(key_nwid), &nwid) || nwid != ztl_be64(l->nwid) ||
+	    !ztl_dict_get_hex(d, n, key_id, sizeof(key_id), &id) || id != ztl_be64(self8) || type != 0u ||
+	    !ztl_dict_get_hex(d, n, key_mtu, sizeof(key_mtu), &mtu) || mtu < ZTL_MTU_MIN || mtu > ZTL_MTU_MAX ||
 	    ts < l->cfg_ts || (pushed && ts == l->cfg_ts)) {
 		count(&l->stats.config_bad);
 		return 0;
 	}
-	const int an = ztl_dict_get(d, n, ZTL_KEY("I"), addrs, sizeof(addrs));
+	const int an = ztl_dict_get(d, n, key_cap_i, sizeof(key_cap_i), addrs, sizeof(addrs));
 
 	if (an > 0) {
 		first_ipv4(addrs, (size_t)an, ip, &prefix);
 	}
 	/* The certificate goes straight to its place. If it is not complete,
 	 * the node has no configuration until the next one comes. */
-	const int cn = ztl_dict_get(d, n, ZTL_KEY("C"), l->com, ZTL_COM_MAX);
+	const int cn = ztl_dict_get(d, n, key_cap_c, sizeof(key_cap_c), l->com, ZTL_COM_MAX);
 
 	if (cn < 1 || com_len_at(l->com, (size_t)cn) != (size_t)cn) {
 		l->com_len = 0;
@@ -525,6 +620,10 @@ static unsigned int config_apply(struct ztl_leaf *l, const uint8_t *d, size_t n,
 	}
 	/* A new certificate (the controller dates each one) and maybe another
 	 * address: every peer gets the certificate and the groups again. */
+	/*@ loop invariant 0 <= i <= ZTL_PEERS;
+	  @ loop assigns i, l->ps[0 .. ZTL_PEERS - 1];
+	  @ loop variant ZTL_PEERS - i;
+	  @*/
 	for (unsigned int i = 0; i < ZTL_PEERS; i++) {
 		l->ps[i].com_sent = 0;
 		l->ps[i].like_sent = 0;
@@ -542,6 +641,11 @@ static unsigned int config_apply(struct ztl_leaf *l, const uint8_t *d, size_t n,
 /* One configuration chunk: network ID, chunk length, chunk, and after it
  * (current controllers) flags, update ID, total length, chunk index and a
  * signature. Only a configuration that is complete in one chunk is used. */
+/*@ requires \valid(l) && ztl_leaf_ok(l) && n <= ZTL_PKT_MAX && \valid_read(b + (0 .. n - 1));
+  @ requires \separated(b + (0 .. n - 1), &l->com[0 .. ZTL_COM_MAX - 1]);
+  @ assigns LEAF_CONFIG_STATE;
+  @ ensures ztl_leaf_ok(l);
+  @*/
 static unsigned int on_config_chunk(struct ztl_leaf *l, const uint8_t *b, size_t n, int pushed)
 {
 	if (n < ZTL_NWID_LEN + 2u || !ztl_bytes_eq(b, l->nwid, ZTL_NWID_LEN)) {
@@ -569,6 +673,12 @@ static unsigned int on_config_chunk(struct ztl_leaf *l, const uint8_t *b, size_t
 }
 
 /* Start an OK packet that answers the packet pkt of peer i. */
+/*@ requires \valid(l) && i < ZTL_PEERS && \valid(tx + (0 .. ZTL_PKT_MIN + OK_HDR - 1));
+  @ requires \valid_read(pkt + (0 .. ZTL_PKT_MIN - 1));
+  @ requires \separated(l, tx + (0 .. ZTL_PKT_MIN + OK_HDR - 1)) && \separated(pkt + (0 .. ZTL_PKT_MIN - 1), tx + (0 .. ZTL_PKT_MIN + OK_HDR - 1));
+  @ assigns l->next_id, tx[0 .. ZTL_PKT_MIN + OK_HDR - 1];
+  @ ensures l->next_id == LEAF_NEXT_ID(\old(l->next_id)) && tx[ZTL_PKT_IDX_VERB] == VERB_OK;
+  @*/
 static void begin_ok(struct ztl_leaf *l, unsigned int i, uint8_t *tx, uint8_t verb, const uint8_t *pkt)
 {
 	(void)begin(l, i, tx, VERB_OK);
@@ -578,6 +688,15 @@ static void begin_ok(struct ztl_leaf *l, unsigned int i, uint8_t *tx, uint8_t ve
 
 /* HELLO from a pinned peer: answer OK(HELLO). The peer learns from this
  * answer that the way to this node works, and reads the version from it. */
+/*@ requires \valid(l) && ztl_leaf_ok(l) && i < ZTL_PEERS && n <= ZTL_PKT_MAX && \valid_read(b + (0 .. n - 1));
+  @ requires \valid_read(pkt + (0 .. ZTL_PKT_MIN - 1)) && \valid(LEAF_BUF(tx));
+  @ requires \separated(l, LEAF_BUF(tx)) && \separated(b + (0 .. n - 1), LEAF_BUF(tx)) && \separated(pkt + (0 .. ZTL_PKT_MIN - 1), LEAF_BUF(tx));
+  @ assigns tx[0 .. ZTL_PKT_MAX - 1], l->next_id, l->stats.tx_packets, l->stats.rx_bad_form;
+  @ ensures \result == 0 || \result == OK_HELLO_LEN;
+  @ ensures ztl_leaf_ok(l);
+  @ ensures \result == 0 ==> l->next_id == \old(l->next_id);
+  @ ensures \result != 0 ==> l->next_id == LEAF_NEXT_ID(\old(l->next_id));
+  @*/
 static size_t on_hello(struct ztl_leaf *l, unsigned int i, const uint8_t *pkt, const uint8_t *b, size_t n,
 		       uint8_t *tx)
 {
@@ -604,6 +723,11 @@ static size_t on_hello(struct ztl_leaf *l, unsigned int i, const uint8_t *pkt, c
 	return finish(l, i, tx, OK_HELLO_LEN, 1);
 }
 
+/*@ requires \valid(l) && ztl_leaf_ok(l) && i < ZTL_PEERS && n <= ZTL_PKT_MAX && \valid_read(b + (0 .. n - 1));
+  @ requires \separated(b + (0 .. n - 1), &l->com[0 .. ZTL_COM_MAX - 1]);
+  @ assigns LEAF_CONFIG_STATE, l->req_wait, l->stats.rx_ignored;
+  @ ensures ztl_leaf_ok(l);
+  @*/
 static unsigned int on_ok(struct ztl_leaf *l, unsigned int i, const uint8_t *b, size_t n)
 {
 	if (n < OK_HDR) {
@@ -637,6 +761,10 @@ static unsigned int on_ok(struct ztl_leaf *l, unsigned int i, const uint8_t *b, 
 	return 0;
 }
 
+/*@ requires \valid(l) && ztl_leaf_ok(l) && i < ZTL_PEERS && n <= ZTL_PKT_MAX && \valid_read(b + (0 .. n - 1));
+  @ assigns l->have_config, l->com_len, l->stats.config_bad, l->stats.rx_ignored, l->ps[i];
+  @ ensures ztl_leaf_ok(l);
+  @*/
 static unsigned int on_error(struct ztl_leaf *l, unsigned int i, const uint8_t *b, size_t n)
 {
 	/* The controller refuses the configuration request that is waiting
@@ -670,6 +798,14 @@ static unsigned int on_error(struct ztl_leaf *l, unsigned int i, const uint8_t *
  * and the length is 1 .. mtu. src: the source in the packet, or NULL. A
  * frame is taken only with the peer's own Ethernet address as its source
  * (no bridging). */
+/*@ requires \valid(l) && ztl_leaf_ok(l) && i < ZTL_PEERS && len <= ZTL_PKT_MAX && \valid_read(data + (0 .. len - 1));
+  @ requires \valid_read(dst + (0 .. ZTL_ETH_ALEN - 1)) && (src == \null || \valid_read(src + (0 .. ZTL_ETH_ALEN - 1)));
+  @ requires \valid(f) && \separated(f, l) && \separated(f, dst + (0 .. ZTL_ETH_ALEN - 1));
+  @ assigns *f, l->stats.rx_no_config, l->stats.rx_bad_form, l->stats.rx_frames;
+  @ ensures ztl_leaf_ok(l);
+  @ ensures (\result == 0 && f->len == \old(f->len)) ||
+  @   (\result == ZTL_IN_FRAME && 1 <= f->len <= ZTL_MTU_MAX && f->len == len && f->data == data);
+  @*/
 static unsigned int deliver_frame(struct ztl_leaf *l, unsigned int i, const uint8_t *dst, const uint8_t *src,
 				  uint16_t ethertype, const uint8_t *data, size_t len, struct ztl_frame *f)
 {
@@ -694,6 +830,14 @@ static unsigned int deliver_frame(struct ztl_leaf *l, unsigned int i, const uint
 }
 
 /* FRAME: network, ethertype, data. To this node, from the sender. */
+/*@ requires \valid(l) && ztl_leaf_ok(l) && i < ZTL_PEERS && n <= ZTL_PKT_MAX && \valid_read(b + (0 .. n - 1));
+  @ requires \valid(f) && \separated(f, l) && \separated(f, b + (0 .. n - 1));
+  @ assigns *f, l->stats.rx_no_config, l->stats.rx_bad_form, l->stats.rx_frames;
+  @ ensures ztl_leaf_ok(l);
+  @ // Either no frame (the record is as before), or one frame of 1 .. MTU bytes that can be read.
+  @ ensures (\result == 0 && f->len == \old(f->len)) ||
+  @   (1 <= f->len <= ZTL_MTU_MAX && \valid_read(f->data + (0 .. f->len - 1)));
+  @*/
 static unsigned int on_frame(struct ztl_leaf *l, unsigned int i, const uint8_t *b, size_t n, struct ztl_frame *f)
 {
 	if (n <= FRAME_HDR || !ztl_bytes_eq(b, l->nwid, ZTL_NWID_LEN)) {
@@ -705,6 +849,20 @@ static unsigned int on_frame(struct ztl_leaf *l, unsigned int i, const uint8_t *
 
 /* EXT_FRAME: network, flags, optional certificate (flag 0x01), destination,
  * source, ethertype, data. Flag 0x10: the sender wants an OK. */
+/*@ requires \valid(l) && ztl_leaf_ok(l) && i < ZTL_PEERS && n <= ZTL_PKT_MAX && \valid_read(b + (0 .. n - 1));
+  @ requires \valid_read(pkt + (0 .. ZTL_PKT_MIN - 1)) && \valid(LEAF_BUF(tx));
+  @ requires \separated(l, LEAF_BUF(tx)) && \separated(b + (0 .. n - 1), LEAF_BUF(tx)) && \separated(pkt + (0 .. ZTL_PKT_MIN - 1), LEAF_BUF(tx));
+  @ requires \valid(f) && \separated(f, l) && \separated(f, b + (0 .. n - 1));
+  @ requires \valid(tx_len) && \separated(tx_len, l, f, LEAF_BUF(tx));
+  @ assigns *f, l->stats.rx_no_config, l->stats.rx_bad_form, l->stats.rx_frames, tx[0 .. ZTL_PKT_MAX - 1], *tx_len,
+  @         l->next_id, l->stats.tx_packets;
+  @ ensures (*tx_len == \old(*tx_len) && l->next_id == \old(l->next_id)) ||
+  @   (*tx_len == OK_EXT_LEN && l->next_id == LEAF_NEXT_ID(\old(l->next_id)));
+  @ ensures ztl_leaf_ok(l);
+  @ // Either no frame (the record is as before), or one frame of 1 .. MTU bytes that can be read.
+  @ ensures (\result == 0 && f->len == \old(f->len)) ||
+  @   (1 <= f->len <= ZTL_MTU_MAX && \valid_read(f->data + (0 .. f->len - 1)));
+  @*/
 static unsigned int on_ext_frame(struct ztl_leaf *l, unsigned int i, const uint8_t *pkt, const uint8_t *b, size_t n,
 				 uint8_t *tx, size_t *tx_len, struct ztl_frame *f)
 {
@@ -751,6 +909,14 @@ static unsigned int on_ext_frame(struct ztl_leaf *l, unsigned int i, const uint8
 /* MULTICAST_FRAME: network, flags, optional certificate (0x01), optional
  * gather limit (0x02, 4 bytes), optional source (0x04), destination group
  * address, extra group number (4), ethertype, data. */
+/*@ requires \valid(l) && ztl_leaf_ok(l) && i < ZTL_PEERS && n <= ZTL_PKT_MAX && \valid_read(b + (0 .. n - 1));
+  @ requires \valid(f) && \separated(f, l) && \separated(f, b + (0 .. n - 1));
+  @ assigns *f, l->stats.rx_no_config, l->stats.rx_bad_form, l->stats.rx_frames;
+  @ ensures ztl_leaf_ok(l);
+  @ // Either no frame (the record is as before), or one frame of 1 .. MTU bytes that can be read.
+  @ ensures (\result == 0 && f->len == \old(f->len)) ||
+  @   (1 <= f->len <= ZTL_MTU_MAX && \valid_read(f->data + (0 .. f->len - 1)));
+  @*/
 static unsigned int on_multicast_frame(struct ztl_leaf *l, unsigned int i, const uint8_t *b, size_t n,
 				       struct ztl_frame *f)
 {
@@ -792,6 +958,15 @@ static unsigned int on_multicast_frame(struct ztl_leaf *l, unsigned int i, const
 }
 
 /* ECHO: answer OK with the same bytes. */
+/*@ requires \valid(l) && ztl_leaf_ok(l) && i < ZTL_PEERS && n <= ZTL_PKT_MAX && \valid_read(b + (0 .. n - 1));
+  @ requires \valid_read(pkt + (0 .. ZTL_PKT_MIN - 1)) && \valid(LEAF_BUF(tx));
+  @ requires \separated(l, LEAF_BUF(tx)) && \separated(b + (0 .. n - 1), LEAF_BUF(tx)) && \separated(pkt + (0 .. ZTL_PKT_MIN - 1), LEAF_BUF(tx));
+  @ assigns tx[0 .. ZTL_PKT_MAX - 1], l->next_id, l->stats.tx_packets, l->stats.rx_bad_form;
+  @ ensures \result == 0 || ZTL_PKT_MIN + OK_HDR <= \result <= ZTL_PKT_MAX;
+  @ ensures ztl_leaf_ok(l);
+  @ ensures \result == 0 ==> l->next_id == \old(l->next_id);
+  @ ensures \result != 0 ==> l->next_id == LEAF_NEXT_ID(\old(l->next_id));
+  @*/
 static size_t on_echo(struct ztl_leaf *l, unsigned int i, const uint8_t *pkt, const uint8_t *b, size_t n, uint8_t *tx)
 {
 	if (n > ZTL_PKT_MAX - (ZTL_PKT_MIN + OK_HDR)) {
@@ -809,6 +984,8 @@ unsigned int ztl_input(struct ztl_leaf *l, uint8_t *dgram, size_t len, uint32_t 
 	struct ztl_rx_packet p;
 
 	*tx_len = 0;
+	frame->len = 0; /* no frame, until one is delivered */
+	frame->data = NULL;
 	if (!ztl_rx(&l->node, dgram, len, now_ms, &p)) {
 		return 0;
 	}

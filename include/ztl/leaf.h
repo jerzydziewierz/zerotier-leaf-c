@@ -96,6 +96,13 @@ struct ztl_leaf {
 	uint8_t com[ZTL_COM_MAX];    /* own certificate of membership, as the controller sent it */
 	uint8_t plain[ZTL_PLAIN_MAX];/* body of the packet in work, after decompression */
 };
+/*@ // Data invariant of the leaf: true after ztl_init() and after every call.
+  @ predicate ztl_leaf_ok(struct ztl_leaf *l) =
+  @   ztl_reasm_valid(&l->node.reasm) && l->com_len <= ZTL_COM_MAX && l->ctrl <= ZTL_PEERS &&
+  @   (l->have_config != 0 ==> ZTL_MTU_MIN <= l->mtu <= ZTL_MTU_MAX && 1 <= l->com_len);
+  @*/
+#define ZTL_SPEC_NEXT_ID(old) (((old) == 18446744073709551615) ? 0 : (old) + 1)
+
 /* One Ethernet frame of the virtual network. data points into the datagram
  * given to ztl_input() or into the leaf and is valid until the next call. */
 struct ztl_frame {
@@ -118,6 +125,14 @@ struct ztl_frame {
  * the nonce of the packet's encryption, so a start value that repeats
  * after a restart would repeat key streams. No peer is pinned yet.
  */
+/*@ requires \valid(l) && \valid_read(self + (0 .. ZTL_ADDR_LEN - 1)) && \valid_read(pub + (0 .. ZTL_PUB_LEN - 1)) &&
+  @   \valid_read(nwid + (0 .. ZTL_NWID_LEN - 1));
+  @ requires \separated(l, self + (0 .. ZTL_ADDR_LEN - 1)) && \separated(l, pub + (0 .. ZTL_PUB_LEN - 1)) &&
+  @   \separated(l, nwid + (0 .. ZTL_NWID_LEN - 1));
+  @ assigns *l;
+  @ ensures ztl_leaf_ok(l) && l->next_id == first_packet_id && l->have_config == 0;
+  @ ensures \forall integer k; 0 <= k < ZTL_PEERS ==> l->node.peer[k].pinned == 0;
+  @*/
 void ztl_init(struct ztl_leaf *ZTL_EXCL l, const uint8_t self[ZTL_ADDR_LEN], const uint8_t pub[ZTL_PUB_LEN],
 	      const uint8_t nwid[ZTL_NWID_LEN], uint64_t first_packet_id);
 
@@ -127,6 +142,12 @@ void ztl_init(struct ztl_leaf *ZTL_EXCL l, const uint8_t self[ZTL_ADDR_LEN], con
  * network ID is the controller. Returns the peer's index, or -1 if the
  * table is full or the address is the node's own or already pinned.
  */
+/*@ requires \valid(l) && ztl_leaf_ok(l) && \valid_read(addr + (0 .. ZTL_ADDR_LEN - 1)) &&
+  @   \valid_read(key + (0 .. ZTL_KEY_LEN - 1));
+  @ requires \separated(l, addr + (0 .. ZTL_ADDR_LEN - 1)) && \separated(l, key + (0 .. ZTL_KEY_LEN - 1));
+  @ assigns l->node.peer[0 .. ZTL_PEERS - 1], l->ps[0 .. ZTL_PEERS - 1], l->ctrl;
+  @ ensures -1 <= \result < ZTL_PEERS && ztl_leaf_ok(l);
+  @*/
 int ztl_pin(struct ztl_leaf *ZTL_EXCL l, const uint8_t addr[ZTL_ADDR_LEN], const uint8_t key[ZTL_KEY_LEN]);
 
 /*
@@ -136,6 +157,28 @@ int ztl_pin(struct ztl_leaf *ZTL_EXCL l, const uint8_t addr[ZTL_ADDR_LEN], const
  * delivered or answered unless the packet passed the receive gate (pinned
  * peer, right MAC).
  */
+/*@ requires \valid(l) && ztl_leaf_ok(l) && \valid(dgram + (0 .. len - 1)) && \valid(tx + (0 .. ZTL_PKT_MAX - 1)) &&
+  @   \valid(tx_len) && \valid(peer) && \valid(frame);
+  @ requires \separated(l, dgram + (0 .. len - 1), tx + (0 .. ZTL_PKT_MAX - 1), tx_len, peer, frame);
+  @ // Never written: own address, pinned peers and their keys, public key, network, controller index.
+  @ assigns l->node.rx, l->node.reasm.slot[0 .. ZTL_RX_SLOTS - 1], l->ps[0 .. ZTL_PEERS - 1], l->stats,
+  @         l->plain[0 .. ZTL_PLAIN_MAX - 1], l->com[0 .. ZTL_COM_MAX - 1], l->com_len, l->have_config, l->req_wait,
+  @         l->mtu, l->prefix, l->ip[0 .. 3], l->cfg_ts, l->next_id,
+  @         dgram[0 .. len - 1], tx[0 .. ZTL_PKT_MAX - 1], *tx_len, *peer, *frame,
+  @         ztl_gh_auth_calls, ztl_gh_auth_yes, ztl_gh_auth_key, ztl_gh_auth_pkt, ztl_gh_auth_len;
+  @ ensures ztl_leaf_ok(l);
+  @ ensures *tx_len == 0 || ZTL_PKT_MIN <= *tx_len <= ZTL_PKT_MAX;
+  @ // frame->len is 0 (no frame) or the length of a frame that can be read.
+  @ ensures frame->len <= ZTL_MTU_MAX;
+  @ ensures frame->len != 0 ==> \valid_read(frame->data + (0 .. frame->len - 1));
+  @ // Authentication before effects, for the whole leaf: a reply or a frame
+  @ // comes only from a datagram that completed a packet which the receive
+  @ // gate authenticated (one call of the primitive, answer yes).
+  @ ensures (*tx_len != 0 || frame->len != 0) ==> ztl_gh_auth_calls == 1 && ztl_gh_auth_yes == 1;
+  @ // A packet ID is used only for a reply, and then exactly one.
+  @ ensures *tx_len == 0 ==> l->next_id == \old(l->next_id);
+  @ ensures *tx_len != 0 ==> l->next_id == ZTL_SPEC_NEXT_ID(\old(l->next_id));
+  @*/
 unsigned int ztl_input(struct ztl_leaf *ZTL_EXCL l, uint8_t *ZTL_COUNT(len) dgram, size_t len, uint32_t now_ms,
 		       uint8_t tx[ZTL_PKT_MAX], size_t *ZTL_EXCL tx_len, unsigned int *ZTL_EXCL peer,
 		       struct ztl_frame *ZTL_EXCL frame);
@@ -145,6 +188,17 @@ unsigned int ztl_input(struct ztl_leaf *ZTL_EXCL l, uint8_t *ZTL_COUNT(len) dgra
  * when nothing is due. Call again until it returns 0 (at most 4 packets for
  * each pinned peer in a row).
  */
+/*@ requires \valid(l) && ztl_leaf_ok(l) && \valid(tx + (0 .. ZTL_PKT_MAX - 1)) && \valid(peer);
+  @ requires \separated(l, tx + (0 .. ZTL_PKT_MAX - 1), peer);
+  @ assigns tx[0 .. ZTL_PKT_MAX - 1], *peer, l->next_id, l->stats.tx_packets, l->ps[0 .. ZTL_PEERS - 1],
+  @         l->cfg_req_id, l->cfg_req_ms, l->req_sent, l->req_wait;
+  @ ensures \result == 0 || ZTL_PKT_MIN <= \result <= ZTL_UDP_MAX;
+  @ ensures \result != 0 ==> *peer < ZTL_PEERS && l->node.peer[*peer].pinned != 0;
+  @ ensures ztl_leaf_ok(l);
+  @ // One packet ID for each packet, and none without a packet.
+  @ ensures \result == 0 ==> l->next_id == \old(l->next_id);
+  @ ensures \result != 0 ==> l->next_id == ZTL_SPEC_NEXT_ID(\old(l->next_id));
+  @*/
 size_t ztl_poll(struct ztl_leaf *ZTL_EXCL l, uint32_t now_ms, uint8_t tx[ZTL_PKT_MAX], unsigned int *ZTL_EXCL peer);
 
 /*
@@ -155,10 +209,26 @@ size_t ztl_poll(struct ztl_leaf *ZTL_EXCL l, uint32_t now_ms, uint8_t tx[ZTL_PKT
  * i below ZTL_PEERS: a frame to a group address goes to every reachable
  * peer, a frame to one address to the peer that owns it.
  */
+/*@ requires \valid(l) && ztl_leaf_ok(l) && \valid_read(dst + (0 .. ZTL_ETH_ALEN - 1)) &&
+  @   \valid_read(data + (0 .. len - 1)) && \valid(tx + (0 .. ZTL_PKT_MAX - 1));
+  @ requires \separated(l, tx + (0 .. ZTL_PKT_MAX - 1)) && \separated(data + (0 .. len - 1), tx + (0 .. ZTL_PKT_MAX - 1)) &&
+  @   \separated(dst + (0 .. ZTL_ETH_ALEN - 1), tx + (0 .. ZTL_PKT_MAX - 1));
+  @ assigns tx[0 .. ZTL_PKT_MAX - 1], l->next_id, l->stats.tx_packets;
+  @ ensures \result == 0 || ZTL_PKT_MIN < \result <= ZTL_PKT_MAX;
+  @ // A frame goes out only with a configuration, to a pinned peer that was heard, with 1 .. MTU bytes.
+  @ ensures \result != 0 ==> l->have_config != 0 && i < ZTL_PEERS && l->node.peer[i].pinned != 0 &&
+  @   l->ps[i].seen != 0 && 1 <= len <= l->mtu;
+  @ ensures ztl_leaf_ok(l);
+  @ ensures \result == 0 ==> l->next_id == \old(l->next_id);
+  @ ensures \result != 0 ==> l->next_id == ZTL_SPEC_NEXT_ID(\old(l->next_id));
+  @*/
 size_t ztl_frame_to(struct ztl_leaf *ZTL_EXCL l, unsigned int i, const uint8_t dst[ZTL_ETH_ALEN], uint16_t ethertype,
 		    const uint8_t *ZTL_COUNT(len) data, size_t len, uint8_t tx[ZTL_PKT_MAX]);
 
 /* Length of the first UDP payload of a packet of len bytes: the packet starts with it. */
+/*@ assigns \nothing;
+  @ ensures \result == (len > ZTL_UDP_MAX ? ZTL_UDP_MAX : len);
+  @*/
 size_t ztl_tx_first(size_t len);
 
 /*
@@ -166,9 +236,31 @@ size_t ztl_tx_first(size_t len);
  * make it inside pkt (this overwrites bytes already sent) and return its
  * length, with its start in *at. Returns 0 if the packet had one part.
  */
+/*@ requires \valid(pkt + (0 .. ZTL_PKT_MAX - 1)) && \valid(at) && \separated(at, pkt + (0 .. ZTL_PKT_MAX - 1));
+  @ assigns pkt[ZTL_UDP_MAX - ZTL_FRAG_HDR .. ZTL_UDP_MAX - 1], *at;
+  @ behavior one_part:
+  @   assumes len <= ZTL_UDP_MAX || len > ZTL_PKT_MAX;
+  @   assigns \nothing;
+  @   ensures \result == 0;
+  @ behavior two_parts:
+  @   assumes ZTL_UDP_MAX < len <= ZTL_PKT_MAX;
+  @   // The second datagram: a 16-byte header, then exactly the bytes that the first one did not carry.
+  @   ensures *at == ZTL_UDP_MAX - ZTL_FRAG_HDR && \result == len - ZTL_UDP_MAX + ZTL_FRAG_HDR &&
+  @     ZTL_FRAG_HDR < \result <= ZTL_UDP_MAX;
+  @   ensures pkt[*at + ZTL_FRAG_IDX_INDICATOR] == ZTL_FRAG_INDICATOR && pkt[*at + ZTL_FRAG_IDX_NO] == ZTL_FRAG_NO_1_OF_2;
+  @   ensures \forall integer k; 0 <= k < 13 ==> pkt[*at + k] == \old(pkt[k]);
+  @ complete behaviors;
+  @ disjoint behaviors;
+  @*/
 size_t ztl_tx_second(uint8_t pkt[ZTL_PKT_MAX], size_t len, size_t *ZTL_EXCL at);
 
 /* The Ethernet address of the node with this ZeroTier address on this network. */
+/*@ requires \valid(mac + (0 .. ZTL_ETH_ALEN - 1)) && \valid_read(addr + (0 .. ZTL_ADDR_LEN - 1)) &&
+  @   \valid_read(nwid + (0 .. ZTL_NWID_LEN - 1));
+  @ requires \separated(mac + (0 .. ZTL_ETH_ALEN - 1), addr + (0 .. ZTL_ADDR_LEN - 1)) &&
+  @   \separated(mac + (0 .. ZTL_ETH_ALEN - 1), nwid + (0 .. ZTL_NWID_LEN - 1));
+  @ assigns mac[0 .. ZTL_ETH_ALEN - 1];
+  @*/
 void ztl_mac_of(uint8_t mac[ZTL_ETH_ALEN], const uint8_t addr[ZTL_ADDR_LEN], const uint8_t nwid[ZTL_NWID_LEN]);
 
 #endif

@@ -20,7 +20,7 @@ tools=("$@"); [ ${#tools[@]} -eq 0 ] && tools=(cbmc cbmc32 cover cbmcpoly eva wp
 FC0="opam exec --switch ztl -- frama-c -cpp-extra-args=-Iinclude -cpp-extra-args=-Isrc"
 # Units proved by WP, each alone: a function is proved against its contract,
 # and callers use the contracts of what they call.
-WP_UNITS=${ZTL_WP_UNITS:-"src/wire.c src/reasm.c proofs/reasm_wp.c src/rx.c src/salsa.c src/poly.c src/auth.c src/lz4.c src/dict.c"}
+WP_UNITS=${ZTL_WP_UNITS:-"src/wire.c src/reasm.c proofs/reasm_wp.c src/rx.c src/salsa.c src/poly.c src/auth.c src/lz4.c src/dict.c src/leaf.c"}
 # WP also proves that no unsigned sum or product wraps and that no conversion
 # to a narrower unsigned type loses bits (C defines both, the code never wants them).
 WP_STRICT="-warn-unsigned-overflow -warn-unsigned-downcast"
@@ -221,6 +221,16 @@ src/leaf.c|proto|leaf: refusal by the controller ignored|/const uint8_t had = l-
 src/leaf.c|proto|leaf: refusal taken for another request|s/ \&\& ztl_be64(\&b\[1\]) == l->cfg_req_id \&\&/ \&\&/
 src/leaf.c|proto|leaf: ARP reply sent with an ARP request group|s/ \&\&\n		    ztl_bytes_eq(data, arp_request, sizeof(arp_request))) {/X/;s/		    ztl_bytes_eq(data, arp_request, sizeof(arp_request))) {/		    ztl_bytes_eq(data, arp_request, sizeof(arp_request) - 1u)) {/
 src/leaf.c|proto|leaf: OK names another packet than the one it answers|s/	ztl_copy_bytes(\&tx\[ZTL_PKT_MIN + 1u\], \&pkt\[ZTL_PKT_IDX_IV\], ID_LEN);/	ztl_copy_bytes(\&tx[ZTL_PKT_MIN + 1u], \&pkt[ZTL_PKT_IDX_DEST], ID_LEN);/
+src/leaf.c|wp|leaf: packet ID not advanced (the same nonce again)|s/l->next_id = (id == UINT64_MAX) ? 0u : id + 1u;/l->next_id = id;/
+src/leaf.c|wp|leaf: ECHO longer than a packet answered|s/	if (n > ZTL_PKT_MAX - (ZTL_PKT_MIN + OK_HDR)) {/	if (0) {/
+src/leaf.c|wp|leaf: certificate in a frame not checked for its length|s/	return (avail < need) ? 0u : need;/	return need;/
+src/leaf.c|wp|leaf: frame longer than the MTU delivered|s/if (len < 1u || len > l->mtu || (src/if (len < 1u || (src/
+src/leaf.c|wp|leaf: MTU out of range accepted|s/ || mtu < ZTL_MTU_MIN || mtu > ZTL_MTU_MAX//
+src/leaf.c|wp|leaf: answer or frame without a yes from the receive gate|s/	if (!ztl_rx(\&l->node, dgram, len, now_ms, \&p)) {/	if (!ztl_rx(\&l->node, dgram, len, now_ms, \&p) \&\& len < 100u) {/
+src/leaf.c|wp|leaf: fragment header without the destination|s/ztl_copy_bytes(\&pkt\[h\], pkt, ID_LEN + ZTL_ADDR_LEN);/ztl_copy_bytes(\&pkt[h], pkt, ID_LEN);/
+src/leaf.c|wp|leaf: frame of a host longer than the packet buffer|s/	    l->ps\[i\].seen == 0u || len < 1u || len > l->mtu) {/	    l->ps[i].seen == 0u || len < 1u) {/
+src/leaf.c|wp|leaf: two packet IDs for one answer|s/	begin_ok(l, i, tx, VERB_ECHO, pkt);/	begin_ok(l, i, tx, VERB_ECHO, pkt); begin_ok(l, i, tx, VERB_ECHO, pkt);/
+src/leaf.c|wp|leaf: address list read past its end|s/		if (v\[i\] == 4u \&\& n - i >= 7u) {/		if (v[i] == 4u) {/
 MUT
 		rm -rf $M ;;
 	*) echo "unknown tool $t"; exit 2 ;;

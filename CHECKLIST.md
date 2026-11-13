@@ -6,6 +6,11 @@ This folder holds the new solution: a wire-compatible ZeroTier leaf in C with no
 
 The reference solution is `../grey_zerotier/` (public: `../grey-zerotier-public/`); it stays as the differential oracle. Baseline to beat: 110,508 B add-on linked RAM, 509 KB flash (`compile_probe` pair, 2026-11-12).
 
+
+--
+
+Work and progress markers:
+
 ❓ = Question for Grey to answer
 🥦 = Hypothesis, idea for consideration
 💡 = Finding, observation, information
@@ -25,6 +30,8 @@ The reference solution is `../grey_zerotier/` (public: `../grey-zerotier-public/
 📅 = Date of next action/review
 👥 = Delegated to ...
 
+--
+
 Each item is closed with one line: what was tried, on which code, the result, and the limit. Evidence tags: [CODE] read in source, [MEASURED] run here, [UNVERIFIED] not yet checked.
 
 ## Theorems to aim for
@@ -39,6 +46,9 @@ Each item is closed with one line: what was tried, on which code, the result, an
 | T6 | Functions correctly returns error for invalid inputs | 🔴 |
 | T7 | Functions always terminates in finite time for any input | 🔴 |
 | T8 | Functions output always satisfies the contract (so that downstream function can trust it without further checks) | 🔴 |
+| T8 | Functions never read memory outside bounds | 🔴 |
+| T8 | Functions never write memory outside bounds (no side effects) | 🔴 |
+
 
 ## Preferred properties
 
@@ -52,7 +62,7 @@ Each item is closed with one line: what was tried, on which code, the result, an
 | D-1 | No general heap: static typed tables (peers, paths, config), one per-call arena, fixed rings (reassembly, TX wait, WHOIS) | ♻️ `struct ztl_leaf` holds everything (gate state, per-peer timers, configuration, certificate, one plain buffer); no heap, no arena, no queue: the caller's one packet buffer is the only other memory |
 | D-2 | C instead of C++: no exceptions, no libstdc++, no `SharedPtr`; packet path becomes eligible for ITCM | 🔄 ISO C11, no C library calls, no function pointers so far |
 | D-3 | In-place packet processing in one contiguous buffer; no 2 KB packets by value on the stack | 🔄 unfragmented packets are processed in the datagram buffer; a fragmented packet is joined in its reassembly slot; largest stack frame so far 96 B (`ztl_rx`) |
-| D-4 | Memory budget table: every struct, count and size, checked at build time (`_Static_assert`) | 🔄 All state is `struct ztl_node`: 4,440 B on the target, pinned by `_Static_assert` in `src/rx.c` (own address and padding 6, peers 7 × 38 = 266, reassembly 2 × 2,072 = 4,144, counters 24). Stack of the receive path, from `-fstack-usage` and the call graph by hand: 456 B (`ztl_rx` 96, `ztl_auth_open` 72, then key stream 288 or tag 272). With the protocol layer: `struct ztl_leaf` 7,136 B on the target (gate 4,440, plain buffer 2,020, certificate 296, per-peer state 168, public key 64, rest 148); receive stack 88 B (`ztl_input`) above the gate's 456. Zephyr module in a firmware build: 15,799 B with thread stack (3,136) and buffers (packet 2,048, frame 1,500, datagram 1,473). 🌱 `_Static_assert` for `struct ztl_leaf`; call-graph tool instead of the hand sum (V-12) |
+| D-4 | Memory budget table: every struct, count and size, checked at build time (`_Static_assert`) | 🔄 <may need updating, update as needed> All state is `struct ztl_node`: 4,440 B on the target, pinned by `_Static_assert` in `src/rx.c` (own address and padding 6, peers 7 × 38 = 266, reassembly 2 × 2,072 = 4,144, counters 24). Stack of the receive path, from `-fstack-usage` and the call graph by hand: 456 B (`ztl_rx` 96, `ztl_auth_open` 72, then key stream 288 or tag 272). With the protocol layer: `struct ztl_leaf` 7,136 B on the target (gate 4,440, plain buffer 2,020, certificate 296, per-peer state 168, public key 64, rest 148); receive stack 88 B (`ztl_input`) above the gate's 456. Zephyr module in a firmware build: 15,799 B with thread stack (3,136) and buffers (packet 2,048, frame 1,500, datagram 1,473). 🌱 `_Static_assert` for `struct ztl_leaf`; call-graph tool instead of the hand sum (V-12) |
 | D-5 | **Leaf without AES.** 💡 [CODE] `node/Peer.hpp:659` `aesKeysIfSupported()` gives AES keys only when the remote protocol version is ≥ 12; `Packet::armor()` then uses Salsa20/12 + Poly1305 (suite 1). `ZT_PROTO_VERSION_MIN` is 4. So a leaf that announces protocol version 11 in HELLO should get suite 1 in both directions, and needs no AES, no GMAC, no HMAC-SHA384 key derivation (used only for the AES keys, `Peer.cpp:65-67`). ⚠️ Cost: version 13 features are lost (encrypted HELLO, ephemeral keying), and Salsa20/12 is the legacy suite. ✅ [MEASURED] 2026-11-12, host loopback: a leaf core with `ZT_PROTO_VERSION 11`, `aesKeysIfSupported()` always null and `abort()` on both AES code paths passes `tests/interop.py` normal (1500 B and 69 B frames, 7 peers), deny and tamper against the unchanged version-13 reference core. The leaf must do two things: announce version 11 (so that peers send suite 1) and never choose AES itself (upstream chooses by the remote's version). Limit: this ran the reference core, not the C leaf; peers were the 1.16.2 reference core, not a stock `zerotier-one` daemon or the lab controller. ⚠️ D-5a (deployer rule): a peer with `encryptedHelloEnabled` in `local.conf` sends HELLO with extended armor (AES-CTR + ephemeral key, `Packet.cpp:1171`), which a leaf without AES cannot read. [CODE] Default is false (`service/OneService.cpp:2901`). Do not enable it at peers of the leaf. ⚠️ Flag bit 7 with suite 1 is the old "encrypted" flag, set by every peer up to 1.14 on each encrypted packet: accept it. ⚠️ Peers choose the suite from the learned version; incoming AES packets are still possible and the classifier drops them. Grey accepts the loss of encrypted HELLO and ephemeral keying (A-ztram-s2-16). 🌱 Next: same test on the board network; cycles per packet (AES-GMAC-SIV is today's main cost, ≈ 1 M cycles per packet). | 🔄 |
 | D-6 | Protocol scope: which verbs the leaf must send, answer and parse | 🔄 ✅ Reading of the reference: [reports/PROTOCOL.md](reports/PROTOCOL.md) (HELLO, OK, ECHO, configuration, credentials, multicast, timings). ✅ Implemented in `src/leaf.c` and exchanged with the reference node on a host (`tests/host/interop.py`). 🌱 A stock `zerotier-one` and a stock controller as the other side (first run on the board); verb counter in the reference host node as a measurement; older peers |
 | D-7 | C-rusted discipline: own no-op annotation header (optional, bounds, exclusive/shared, init, nominal types); checked by the open tools below. ECLAIR evaluation: letter in `../dev-docs/email-draft-bugseng-c-rusted.md` | 🌱 |

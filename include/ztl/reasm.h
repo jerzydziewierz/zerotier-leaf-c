@@ -54,6 +54,11 @@ struct ztl_reasm {
   @*/
 
 /* Make every slot free. */
+/*@ requires \valid(r);
+  @ assigns r->slot[0 .. ZTL_RX_SLOTS - 1].have;
+  @ ensures \forall integer i; 0 <= i < ZTL_RX_SLOTS ==> r->slot[i].have == 0;
+  @ ensures ztl_reasm_valid(r);
+  @*/
 void ztl_reasm_init(struct ztl_reasm *ZTL_EXCL r);
 
 /* Data invariant of the reassembly state; true after init and after every input. */
