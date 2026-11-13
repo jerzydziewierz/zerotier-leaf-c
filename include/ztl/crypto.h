@@ -66,8 +66,10 @@ void ztl_poly1305(uint8_t tag[ZTL_POLY_TAG_LEN], const uint8_t *ZTL_COUNT(n) m, 
 		  const uint8_t key[ZTL_POLY_KEY_LEN]);
 
 /*
- * 1 if the n bytes at a and b are equal, else 0. The run time and the
- * memory accesses do not depend on the contents.
+ * 1 if the n bytes at a and b are equal, else 0. Written so that the run
+ * time and the memory accesses do not depend on the contents (no early
+ * exit, no branch on a byte). The contract below does not state that; it is
+ * checked by reading the compiled code.
  */
 /*@ requires n <= ZTL_POLY_TAG_LEN;
   @ requires \valid_read(a + (0 .. n - 1)) && \valid_read(b + (0 .. n - 1));

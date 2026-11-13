@@ -91,7 +91,7 @@ int ztl_reasm_ok(const struct ztl_reasm *r)
  * modulo 2^32, which is correct across the wrap of the clock. Written with
  * 64-bit arithmetic so that no operation wraps. */
 /*@ assigns \nothing;
-  @ ensures \result == (4294967296 + now_ms - then_ms) % 4294967296;
+  @ ensures \result == ZTL_SPEC_AGE(now_ms, then_ms);
   @*/
 static uint32_t age_ms(uint32_t now_ms, uint32_t then_ms)
 {
@@ -106,17 +106,41 @@ unsigned int ztl_slot_for(struct ztl_reasm *r, uint64_t id, uint32_t now_ms)
 
 	/*@ loop invariant 0 <= i <= ZTL_RX_SLOTS;
 	  @ loop invariant 0 <= use < ZTL_RX_SLOTS;
-	  @ loop invariant \forall integer k; 0 <= k < ZTL_RX_SLOTS ==>
-	  @   r->slot[k].have == 0 || r->slot[k].have == \at(r->slot[k].have, Pre);
+	  @ loop invariant use_free == 0 || use_free == 1;
+	  @ // So far only slots that were too old are freed; the rest of the table is as before.
+	  @ loop invariant only_old: \forall integer k; 0 <= k < ZTL_RX_SLOTS ==>
+	  @   r->slot[k].have == \at(r->slot[k].have, Pre) ||
+	  @   (k < i && r->slot[k].have == 0 && !ztl_slot_live{Pre}(r, k, now_ms));
+	  @ loop invariant kept: \forall integer k; 0 <= k < i ==>
+	  @   ztl_slot_live{Pre}(r, k, now_ms) ==> r->slot[k].have == \at(r->slot[k].have, Pre);
+	  @ loop invariant freed: \forall integer k; 0 <= k < i ==>
+	  @   !ztl_slot_live{Pre}(r, k, now_ms) ==> r->slot[k].have == 0;
+	  @ // No slot so far waits for this packet.
+	  @ loop invariant other: \forall integer k; 0 <= k < i ==>
+	  @   !(ztl_slot_live{Pre}(r, k, now_ms) && r->slot[k].id == id);
+	  @ // use: the first free slot so far, or else the oldest slot so far.
+	  @ loop invariant found: use_free == 1 ==>
+	  @   use < i && r->slot[use].have == 0 && !ztl_slot_live{Pre}(r, use, now_ms);
+	  @ loop invariant all_live: use_free == 0 ==>
+	  @   \forall integer k; 0 <= k < i ==> ztl_slot_live{Pre}(r, k, now_ms);
+	  @ loop invariant oldest: use_free == 0 ==>
+	  @   (\forall integer k; 0 <= k < i ==> ZTL_SPEC_AGE(now_ms, r->slot[k].t_ms) <= use_age) &&
+	  @   (i == 0 ==> use == 0 && use_age == 0) &&
+	  @   (i > 0 ==> use < i && use_age == ZTL_SPEC_AGE(now_ms, r->slot[use].t_ms));
 	  @ loop assigns i, use, use_age, use_free, r->slot[0 .. ZTL_RX_SLOTS - 1].have;
 	  @ loop variant ZTL_RX_SLOTS - i;
 	  @*/
 	for (unsigned int i = 0; i < ZTL_RX_SLOTS; i++) {
 		struct ztl_reasm_slot *s = &r->slot[i];
-		const uint32_t age = age_ms(now_ms, s->t_ms);
+		uint32_t age = 0;
 
-		if (s->have != 0u && age > ZTL_REASM_TIMEOUT_MS) {
-			s->have = 0;
+		/* The time of a free slot has no meaning and is not read
+		 * (ztl_reasm_init() does not write it). */
+		if (s->have != 0u) {
+			age = age_ms(now_ms, s->t_ms);
+			if (age > ZTL_REASM_TIMEOUT_MS) {
+				s->have = 0;
+			}
 		}
 		if (s->have != 0u && s->id == id) {
 			return i;

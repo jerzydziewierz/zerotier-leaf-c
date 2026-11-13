@@ -11,6 +11,8 @@
 #   ZTL_TIME    time limit in seconds (default 7200)
 #   ZTL_WP_UNITS  one source file: the wp steps prove only this unit (quick
 #               repeat while a proof is written; a full run needs it unset)
+#   ZTL_MUT_ONLY  pattern without spaces: the mutate step tries only the
+#               deliberate errors whose name matches it
 #   ZTL_TAG     suffix for the remote directory and unit, to run a second
 #               copy beside a long run (for example ZTL_TAG=-b)
 # "fetch" copies proofs/out-* back; "wait" polls until the unit ends, then fetches.
@@ -24,10 +26,10 @@ cmd=${1:-status}; shift || true
 case "$cmd" in
 start)
 	rsync -a --delete --exclude '.git' --exclude 'proofs/out-*' --exclude '.frama-c' ./ "$H:$D/" || exit 1
-	r "cd $D && rm -f proofs/out-*; sudo systemctl reset-failed $U 2>/dev/null; sudo systemd-run --quiet --unit=$U \
+	r "cd $D && rm -rf proofs/out-*; sudo systemctl reset-failed $U 2>/dev/null; sudo systemd-run --quiet --unit=$U \
 		-p User=\$(id -un) -p WorkingDirectory=\$PWD -p MemoryMax=$MEM -p MemorySwapMax=0 -p RuntimeMaxSec=$TMO \
 		-p StandardOutput=truncate:\$PWD/proofs/out-run.txt -p StandardError=inherit \
-		-E HOME=\$HOME -E PATH=\$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin -E ZTL_ON_REMOTE=1 ${ZTL_WP_UNITS:+-E ZTL_WP_UNITS=$ZTL_WP_UNITS} \
+		-E HOME=\$HOME -E PATH=\$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin -E ZTL_ON_REMOTE=1 ${ZTL_WP_UNITS:+-E ZTL_WP_UNITS=$ZTL_WP_UNITS} ${ZTL_MUT_ONLY:+-E ZTL_MUT_ONLY=$ZTL_MUT_ONLY} \
 		-E ZTL_CC=\$HOME/ztl-sdk/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc \
 		proofs/run.sh $*" && echo "started $U on $H (limit $MEM, $TMO s): run.sh $*" ;;
 status) r "systemctl show $U -p ActiveState -p Result -p MemoryPeak --value | tr '\n' ' '; echo; cat $D/proofs/out-run.txt 2>/dev/null | cut -c1-220" ;;

@@ -3,6 +3,7 @@
  * Host test: the cryptographic code against test vectors from the reference
  * (tests/vectors/reference.txt, made by tests/oracle/gen.sh).
  *   P: Poly1305 tag.  S: Salsa20/12 key stream blocks 0, 1, 2.
+ *   T: one Salsa20/12 key stream block with a given block number.
  *   A: whole packet. ztl_auth_seal() must give the reference's bytes;
  *      ztl_auth_open() must accept them and give the plain packet back, and
  *      must refuse the packet, without changing it, after any one-bit change
@@ -106,6 +107,21 @@ static void test_salsa(char *s)
 	CHECK(buf[100] == 0, "Salsa20/12 XOR wrote past its length");
 }
 
+static void test_salsa_block(char *s)
+{
+	uint8_t key[32], iv[8], no[4], want[64], got[64];
+	const size_t kl = field(&s, key, sizeof(key));
+	const size_t il = field(&s, iv, sizeof(iv));
+	const size_t nl = field(&s, no, sizeof(no));
+	const size_t wl = field(&s, want, sizeof(want));
+
+	CHECK(kl == 32 && il == 8 && nl == 4 && wl == 64, "Salsa20 block vector format");
+	const uint32_t block = ((uint32_t)no[0] << 24) | ((uint32_t)no[1] << 16) | ((uint32_t)no[2] << 8) | no[3];
+
+	ztl_salsa2012_block(got, key, iv, block);
+	CHECK(memcmp(got, want, 64) == 0, "Salsa20/12 block %lu differs", (unsigned long)block);
+}
+
 /* One changed packet must be refused and left as it is. */
 static void expect_refused(const uint8_t *key, const uint8_t *pkt, size_t len, int enc, const char *what, size_t at)
 {
@@ -198,6 +214,7 @@ int main(int argc, char **argv)
 		switch (line[0]) {
 		case 'P': test_poly(line + 1); np++; break;
 		case 'S': test_salsa(line + 1); ns++; break;
+		case 'T': test_salsa_block(line + 1); ns++; break;
 		case 'A': test_armor(line + 1); na++; break;
 		case '#': break;
 		default: fprintf(stderr, "line %lu: unknown kind\n", g_line); return 2;

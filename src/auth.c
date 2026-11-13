@@ -110,6 +110,8 @@ int ztl_auth_open(const uint8_t key[ZTL_KEY_LEN], uint8_t *pkt, size_t len, int 
 	/*@ ghost ztl_gh_auth_calls++; */
 	/*@ ghost ztl_gh_auth_yes = ok; */
 	/*@ ghost ztl_gh_auth_key = key; */
+	/*@ ghost ztl_gh_auth_pkt = pkt; */
+	/*@ ghost ztl_gh_auth_len = len; */
 	return ok;
 }
 

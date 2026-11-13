@@ -29,8 +29,15 @@ void ztl_move_down(uint8_t *buf, size_t to, size_t from, size_t n);
 
 /*
  * Index of the slot that waits for packet id, or of the slot to use for a
- * new packet (then that slot is free). Frees slots older than the timeout.
- * Only "have" fields change, and only to 0.
+ * new packet (then that slot is free). Only "have" fields change, and only
+ * to 0. Rules, all in the contract:
+ *  - A part older than the timeout does not count as waiting ("live"); its
+ *    slot is freed when the scan reaches it (the scan stops at a match).
+ *  - match: a live slot with this id exists. The result is the first one. No
+ *    live slot is freed.
+ *  - no_match: the result slot is free. If any slot was free or too old, no
+ *    live slot is freed. If every slot was live, the result is a slot of the
+ *    greatest age, and it is the only slot that is freed.
  */
 /*@ requires \valid(r) && ztl_reasm_valid(r);
   @ assigns r->slot[0 .. ZTL_RX_SLOTS - 1].have;
@@ -39,6 +46,26 @@ void ztl_move_down(uint8_t *buf, size_t to, size_t from, size_t n);
   @   r->slot[i].have == 0 || r->slot[i].have == \old(r->slot[i].have);
   @ ensures r->slot[\result].have != 0 ==> r->slot[\result].id == id;
   @ ensures ztl_reasm_valid(r);
+  @ behavior match:
+  @   assumes \exists integer i; 0 <= i < ZTL_RX_SLOTS && ztl_slot_live(r, i, now_ms) && r->slot[i].id == id;
+  @   ensures ztl_slot_live{Pre}(r, \result, now_ms) && r->slot[\result].id == id;
+  @   ensures \forall integer i; 0 <= i < \result ==>
+  @     !(ztl_slot_live{Pre}(r, i, now_ms) && r->slot[i].id == id);
+  @   ensures \forall integer i; 0 <= i < ZTL_RX_SLOTS ==>
+  @     ztl_slot_live{Pre}(r, i, now_ms) ==> r->slot[i].have == \old(r->slot[i].have);
+  @ behavior no_match:
+  @   assumes !(\exists integer i; 0 <= i < ZTL_RX_SLOTS && ztl_slot_live(r, i, now_ms) && r->slot[i].id == id);
+  @   ensures r->slot[\result].have == 0;
+  @   ensures (\exists integer i; 0 <= i < ZTL_RX_SLOTS && !ztl_slot_live{Pre}(r, i, now_ms)) ==>
+  @     \forall integer i; 0 <= i < ZTL_RX_SLOTS ==>
+  @       ztl_slot_live{Pre}(r, i, now_ms) ==> r->slot[i].have == \old(r->slot[i].have);
+  @   ensures (\forall integer i; 0 <= i < ZTL_RX_SLOTS ==> ztl_slot_live{Pre}(r, i, now_ms)) ==>
+  @     (\forall integer i; 0 <= i < ZTL_RX_SLOTS && i != \result ==>
+  @        r->slot[i].have == \old(r->slot[i].have)) &&
+  @     (\forall integer i; 0 <= i < ZTL_RX_SLOTS ==>
+  @        ZTL_SPEC_AGE(now_ms, r->slot[i].t_ms) <= ZTL_SPEC_AGE(now_ms, r->slot[\result].t_ms));
+  @ complete behaviors;
+  @ disjoint behaviors;
   @*/
 unsigned int ztl_slot_for(struct ztl_reasm *r, uint64_t id, uint32_t now_ms);
 

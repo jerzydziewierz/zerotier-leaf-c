@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Run every proof. Exit status 0 only if every tool ran, exited 0 and
 # reported the expected result (a tool that proves nothing is a failure).
-# Usage: proofs/run.sh [cbmc|cbmc32|cover|eva|wp|wp32|target|vectors|mutate]...
-# Default: cbmc cbmc32 cover eva wp wp32 target vectors. cbmc32 and wp32 repeat the
+# Usage: proofs/run.sh [cbmc|cbmc32|cover|cbmcpoly|eva|wp|wp32|target|vectors|mutate]...
+# Default: cbmc cbmc32 cover cbmcpoly eva wp wp32 target vectors. cbmcpoly is the one
+# CBMC harness of the cryptography that ends in seconds (Poly1305 limb limits,
+# induction step); the others run through proofs/remote.sh. cbmc32 and wp32 repeat the
 # proofs with a 32-bit data model (CBMC: arm, on sources preprocessed by the
 # target compiler; WP: gcc_x86_32, the nearest ILP32 model that Frama-C has;
 # its struct layout is not the ARM one). "mutate" applies deliberate errors to
@@ -13,7 +15,7 @@ cd "$(dirname "$0")/.."
 # Provers do not run on the workstation: start this script through
 # proofs/on-remote.sh, which sets ZTL_ON_REMOTE and a memory limit for the run.
 [ "${ZTL_ON_REMOTE:-}" = 1 ] || { echo "run.sh: use proofs/on-remote.sh start [steps] (no local prover runs)"; exit 2; }
-tools=("$@"); [ ${#tools[@]} -eq 0 ] && tools=(cbmc cbmc32 cover eva wp wp32 target vectors)
+tools=("$@"); [ ${#tools[@]} -eq 0 ] && tools=(cbmc cbmc32 cover cbmcpoly eva wp wp32 target vectors)
 FC0="opam exec --switch ztl -- frama-c -cpp-extra-args=-Iinclude -cpp-extra-args=-Isrc"
 # Units proved by WP, each alone: a function is proved against its contract,
 # and callers use the contracts of what they call.
@@ -44,6 +46,11 @@ for t in "${tools[@]}"; do
 		$LIM cbmc $src --bounds-check --pointer-check --pointer-overflow-check \
 		--signed-overflow-check --unsigned-overflow-check --conversion-check \
 		--div-by-zero-check --undefined-shift-check --unwinding-assertions > $o 2>&1
+		s=$?; grep -q '^VERIFICATION SUCCESSFUL$' $o || s=1
+		grep -qE '^\*\* 0 of [1-9][0-9]* failed' $o || s=1 ;;
+	cbmcpoly) $LIM cbmc -DH_POLY_STEP -Iinclude -Isrc src/salsa.c src/auth.c src/reasm.c proofs/crypto_cbmc.c --unwind 65 \
+		--bounds-check --pointer-check --pointer-overflow-check --signed-overflow-check --unsigned-overflow-check \
+		--conversion-check --div-by-zero-check --undefined-shift-check --unwinding-assertions > $o 2>&1
 		s=$?; grep -q '^VERIFICATION SUCCESSFUL$' $o || s=1
 		grep -qE '^\*\* 0 of [1-9][0-9]* failed' $o || s=1 ;;
 	cover) $LIM cbmc $CBMC_SRC --cover cover > $o 2>&1
@@ -88,13 +95,21 @@ for t in "${tools[@]}"; do
 		: > $o; s=0; M=proofs/out-mut
 		while IFS='|' read -r file tools name expr; do
 			[ -n "$file" ] || continue
+			# ZTL_MUT_ONLY: a pattern without spaces; only errors whose name matches it are tried.
+			[ -z "${ZTL_MUT_ONLY:-}" ] || echo "$name" | grep -qE "$ZTL_MUT_ONLY" || continue
 			rm -rf $M; mkdir -p $M/proofs
 			cp -r include src tests $M/ && cp proofs/*.c proofs/run.sh $M/proofs/
 			sed -i "$expr" $M/$file
 			# WP proves each unit alone, so only the changed unit can notice the error.
+			# "rejected" needs a tool that ran and reported the error: an unproved goal,
+			# a failed check, a target not reached, a failed vector. A run that broke for
+			# another reason (compile error, annotation error, missing tool) is BROKEN.
 			if cmp -s $file $M/$file; then echo "NOT APPLIED: $name" >> $o; s=1
-			elif ZTL_WP_UNITS=$file $M/proofs/run.sh $tools > /dev/null 2>&1; then echo "SURVIVED ($tools): $name" >> $o; s=1
-			else echo "rejected ($tools): $name" >> $o; fi
+			elif ZTL_WP_UNITS=$file $M/proofs/run.sh $tools > $M/log.txt 2>&1; then echo "SURVIVED ($tools): $name" >> $o; s=1
+			elif { grep -oE 'Proved goals: [0-9]+ / [0-9]+' $M/log.txt | awk '$3 != $5 { f = 1 } END { exit !f }' ||
+				grep -qE 'VERIFICATION FAILED|== cover FAIL: \*\* [0-9]+ of [0-9]+ covered|checks, [1-9][0-9]* failed|ERROR: AddressSanitizer|runtime error:' $M/log.txt; } \
+				&& ! grep -qE 'Proved goals: \? / \?|annot-error|User Error' $M/log.txt; then echo "rejected ($tools): $name" >> $o
+			else echo "BROKEN ($tools): $name" >> $o; s=1; fi
 		done <<'MUT'
 src/wire.c|cbmc cover wp|head accepted one byte too short|s/if (len < ZTL_PKT_MIN) {/if (len < ZTL_PKT_MIN - 1u) {/
 src/wire.c|cbmc cover wp|packet id halves in the wrong order|s/return UINT64_C(4294967296) \* be32(p) + be32(p + 4);/return UINT64_C(4294967296) * be32(p + 4) + be32(p);/
@@ -113,6 +128,10 @@ src/reasm.c|wp|reassembly: fragment stored one byte too far|s/ztl_copy_bytes(\&s
 src/reasm.c|wp|reassembly: copy loop stops one byte early|0,/for (size_t i = 0; i < n; i++) {/s//for (size_t i = 0; i + 1u < n; i++) {/
 src/reasm.c|wp|reassembly: slot kept after a join|s/s->have = 0; \/\* complete; the bytes stay valid until the slot is used again \*\//s->have = ZTL_SLOT_HEAD;/
 src/reasm.c|wp|reassembly: validity check accepts a zero-length fragment|s/return s->frag_len >= 1u \&\& s->frag_len <= ZTL_FRAG_PAYLOAD_MAX;/return s->frag_len <= ZTL_FRAG_PAYLOAD_MAX;/
+src/reasm.c|wp|reassembly: timeout never applied|s/if (age > ZTL_REASM_TIMEOUT_MS) {/if (0) {/
+src/reasm.c|wp|reassembly: a part of exactly the timeout age is dropped|s/if (age > ZTL_REASM_TIMEOUT_MS) {/if (age >= ZTL_REASM_TIMEOUT_MS) {/
+src/reasm.c|wp|reassembly: with no free slot the newest packet is replaced|s/} else if (!use_free && age >= use_age) {/} else if (!use_free \&\& age <= use_age) {/
+src/reasm.c|wp|reassembly: clock difference without the wrap|s/return (uint32_t)((UINT64_C(4294967296) + now_ms - then_ms) % UINT64_C(4294967296));/return (now_ms >= then_ms) ? now_ms - then_ms : 0u;/
 src/rx.c|wp|gate: unencrypted packet of any verb goes to the primitive|0,/if ((pkt\[ZTL_PKT_IDX_VERB\] \& ZTL_VERB_MASK) != ZTL_VERB_HELLO) {/s//if (0) {/
 src/rx.c|wp|gate: delivery although the primitive said no|s/if (!ztl_auth_open(n->peer\[p\].key, pkt, plen, encrypted)) {/(void)ztl_auth_open(n->peer[p].key, pkt, plen, encrypted); if (0) {/
 src/rx.c|wp|gate: key of another peer|s/if (!ztl_auth_open(n->peer\[p\].key, pkt, plen, encrypted)) {/if (!ztl_auth_open(n->peer[0].key, pkt, plen, encrypted)) {/
@@ -122,7 +141,7 @@ src/rx.c|wp|gate: two counters grow for one refusal|s/count(\&n->rx.bad_auth);/c
 src/rx.c|wp|gate: address compare ignores the last byte|s/for (unsigned int i = 0; i < ZTL_ADDR_LEN; i++) {\n\t\tif (a/X/;0,/for (unsigned int i = 0; i < ZTL_ADDR_LEN; i++) {/s//for (unsigned int i = 0; i + 1u < ZTL_ADDR_LEN; i++) {/
 src/salsa.c|vectors|salsa: five double rounds|s/#define ZTL_SALSA_DOUBLE_ROUNDS 6u/#define ZTL_SALSA_DOUBLE_ROUNDS 5u/
 src/salsa.c|vectors|salsa: one rotation by 9 instead of 7|s/x\[b\] ^= ROTL7(t);/x[b] ^= ROTL9(t);/
-src/salsa.c|vectors|salsa: block number not used|s/in\[8\] = block;/in[8] = 0;/
+src/salsa.c|vectors|salsa: block number not used|s/in\[8\] = block;/in[8] = block * 0u;/
 src/salsa.c|vectors|salsa: payload key stream starts at block 0 (the block of the MAC key)|s/ztl_salsa2012_block(ks, key, iv, (uint32_t)(b + 1u));/ztl_salsa2012_block(ks, key, iv, (uint32_t)b);/
 src/salsa.c|wp|salsa: XOR runs one byte past the buffer|s/for (size_t i = 0; i < take; i++) {/for (size_t i = 0; i <= take; i++) {/
 src/poly.c|wp|poly: one folded product without the factor 5|s/s3 = r3 \* 5u, s4 = r4 \* 5u;/s3 = r3 * 5u, s4 = r4 * 4u;/
@@ -134,8 +153,11 @@ src/poly.c|vectors|poly: no final reduction when h >= 2^130 - 5|s/const uint32_t
 src/poly.c|wp|poly: limb 2 taken from the wrong bits|s/l\[2\] = t1 \/ 1048576u + (t2 % 16384u) \* 4096u;/l[2] = t1 \/ 1048576u + (t2 % 16384u) * 2048u;/
 src/poly.c|wp|poly: a sum that can leave 32 bits|s/	h\[4\] += m\[4\];/	h[4] += m[4] * 64u;/
 src/poly.c|vectors|poly: clamp of r forgotten on one word|s/const uint32_t t1 = ztl_le32(&key\[4\]) % 268435456u \/ 4u \* 4u;/const uint32_t t1 = ztl_le32(\&key[4]);/
+src/poly.c|vectors|poly: one full block skipped far into a long message|s/		poly_load(b, &m\[16u \* i\], 16777216u);/		if (i == 126u) { continue; }\n		poly_load(b, \&m[16u * i], 16777216u);/
 src/poly.c|vectors|poly: the 1 after a full block is missing|s/poly_load(b, &m\[16u \* i\], 16777216u);/poly_load(b, \&m[16u * i], 0u);/
 src/poly.c|vectors|poly: the 1 after the last short block is missing|s/last\[j\] = (j < rest) ? m\[16u \* full + j\] : ((j == rest) ? 1u : 0u);/last[j] = (j < rest) ? m[16u * full + j] : 0u;/
+src/auth.c|vectors|auth: the answer is always yes|s/const int ok = ztl_ct_eq(tag, &pkt\[ZTL_PKT_IDX_MAC\], ZTL_MAC_LEN);/const int ok = 1 + 0 * ztl_ct_eq(tag, \&pkt[ZTL_PKT_IDX_MAC], ZTL_MAC_LEN);/
+src/salsa.c|vectors|salsa: only the low byte of the block number used|s/in\[8\] = block;/in[8] = block % 256u;/
 src/auth.c|vectors|auth: only 7 of the 8 MAC bytes compared|s/const int ok = ztl_ct_eq(tag, &pkt\[ZTL_PKT_IDX_MAC\], ZTL_MAC_LEN);/const int ok = ztl_ct_eq(tag, \&pkt[ZTL_PKT_IDX_MAC], ZTL_MAC_LEN - 1u);/
 src/auth.c|wp|auth: compare ignores the last byte|0,/for (size_t i = 0; i < n; i++) {/s//for (size_t i = 0; i + 1u < n; i++) {/
 src/auth.c|vectors|auth: compare ignores the last byte|0,/for (size_t i = 0; i < n; i++) {/s//for (size_t i = 0; i + 1u < n; i++) {/
@@ -150,6 +172,6 @@ MUT
 	*) echo "unknown tool $t"; exit 2 ;;
 	esac
 	[ $s -ne 0 ] && rc=1
-	echo "== $t $([ $s -eq 0 ] && echo PASS || echo FAIL): $(grep -E 'VERIFICATION|failed|covered|Proved goals|alarms? generated|unknown +[0-9]+ invalid|Timeout|Failed|bytes:|rejected|SURVIVED|NOT APPLIED|rror' $o | tr -s ' ' | tr '\n' ';')"
+	echo "== $t $([ $s -eq 0 ] && echo PASS || echo FAIL): $(grep -E 'VERIFICATION|failed|covered|Proved goals|alarms? generated|unknown +[0-9]+ invalid|Timeout|Failed|bytes:|rejected|SURVIVED|NOT APPLIED|BROKEN|rror' $o | tr -s ' ' | tr '\n' ';')"
 done
 exit $rc

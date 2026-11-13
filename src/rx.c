@@ -2,6 +2,16 @@
 #include "ztl/node.h"
 
 _Static_assert(ZTL_PEERS >= 1u && ZTL_PEERS <= 255u, "peer index is stored in 8 bits");
+/* RAM budget: all state of the node is in struct ztl_node. Own address and
+ * padding 8, each peer 38 (address, flag, key), each reassembly slot one
+ * packet and 24, six counters 24. */
+_Static_assert(sizeof(struct ztl_peer) == ZTL_ADDR_LEN + 1u + ZTL_KEY_LEN, "peer entry without padding");
+_Static_assert(sizeof(struct ztl_node) <=
+		       8u + ZTL_PEERS * 38u + ZTL_RX_SLOTS * (ZTL_PKT_MAX + 24u) + 24u,
+	       "node RAM budget");
+#if defined(__arm__) && ZTL_PKT_MAX == 2048u && ZTL_PEERS == 7u && ZTL_RX_SLOTS == 2u
+_Static_assert(sizeof(struct ztl_node) == 4440u, "node RAM on the target changed");
+#endif
 
 /*@ requires \valid(c);
   @ assigns *c;
@@ -133,6 +143,16 @@ int ztl_rx(struct ztl_node *n, uint8_t *dgram, size_t len, uint32_t now_ms,
 	}
 
 	const uint8_t flags = pkt[ZTL_PKT_IDX_FLAGS];
+
+	/* The suite rule of the classifier, applied to the complete packet for
+	 * the same reason as the address rule. */
+	if ((flags & ZTL_FLAG_CIPHER_HIGH) != 0u ||
+	    (flags & ZTL_FLAG_EXT_ARMOR_MASK) == ZTL_FLAG_BIT7) {
+		count(&n->rx.not_wire);
+		/*@ assert reasm_r9: ztl_reasm_valid(&n->reasm); */
+		return 0;
+	}
+
 	const int encrypted = (flags & ZTL_FLAG_CIPHER_LOW) != 0u;
 
 	if (!encrypted) {

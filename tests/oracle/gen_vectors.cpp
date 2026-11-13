@@ -6,6 +6,7 @@
 // Line formats:
 //   P <key 32> <message, "-" if empty> <tag 16>
 //   S <key 32> <iv 8> <key stream of blocks 0, 1, 2: 192 bytes>
+//   T <key 32> <iv 8> <block number, 8 hex digits> <that key stream block: 64 bytes>
 //   A <key 32> <encrypt 0|1> <packet before armor> <packet after armor>
 #include "Identity.hpp"
 #include "Packet.hpp"
@@ -93,7 +94,7 @@ int main(void)
 		fill(msg, n);
 		poly_line(key, msg, n);
 	}
-	static const size_t longs[] = { 255, 256, 257, 1024, 2020, 2021 };
+	static const size_t longs[] = { 255, 256, 257, 1024, 2020, 2021, 2032, 2047, 2048 };
 	for (size_t n : longs) {
 		fill(key, 32);
 		fill(msg, n);
@@ -150,6 +151,27 @@ int main(void)
 		putchar(' ');
 		hex(ks, sizeof(ks));
 		putchar('\n');
+	}
+
+	// Salsa20/12: single blocks with numbers above 255 (a packet never
+	// needs them; the block function takes any number).
+	for (int k = 0; k < 2; k++) {
+		static uint8_t zero[64 * 1026], ks[64 * 1026];
+		uint8_t iv[8];
+		fill(key, 32);
+		fill(iv, 8);
+		memset(zero, 0, sizeof(zero));
+		Salsa20 s20(key, iv);
+		s20.crypt12(zero, ks, sizeof(ks));
+		for (unsigned int b : { 255u, 256u, 257u, 511u, 512u, 1025u }) {
+			fputs("T ", stdout);
+			hex(key, 32);
+			putchar(' ');
+			hex(iv, 8);
+			printf(" %08x ", b);
+			hex(ks + 64u * b, 64);
+			putchar('\n');
+		}
 	}
 
 	// Whole packets through Packet::armor(): every length up to 160, then

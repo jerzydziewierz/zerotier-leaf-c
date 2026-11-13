@@ -29,23 +29,24 @@ A fixed-function node: at most 7 pinned peers, one network, packets of at most 2
 |---|---|---|
 | Datagram classifier | `src/wire.c` | ✅ proved: exact contract (WP), all inputs up to 2049 bytes (CBMC), checked against a model of the reference receive path |
 | Reassembly (head + one fragment) | `src/reasm.c` | ✅ proved at full packet size (WP, small functions with contracts); cross-checked with CBMC at reduced size |
-| Receive gate ("authentication before effects") | `src/rx.c` | ✅ proved with WP against a contract of the authentication primitive; CBMC cross-check has no result yet |
-| Authentication primitive (Salsa20/12, Poly1305, key mangling) | — | ⏭ in progress, not in this history yet |
-| Protocol messages (HELLO, configuration, frames), send path, Zephyr adapter | — | 🔴 not started |
+| Receive gate ("authentication before effects") | `src/rx.c` | ✅ proved with WP against the contract of the authentication primitive; CBMC cross-check has no result yet |
+| Packet authentication and encryption (key mixing, Salsa20/12, Poly1305, open and seal) | `src/auth.c`, `src/salsa.c`, `src/poly.c` | ✅ same bytes as the reference on test vectors made by the reference; proved with WP: memory safety, no arithmetic wrap, the contract that the gate uses, the arithmetic of each Poly1305 step. ⏭ Not yet proved: Poly1305 over a whole message, any statement about the Salsa20/12 output, constant time |
+| Protocol messages (HELLO, configuration, frames), LZ4 decoder for the configuration, send path, Zephyr adapter | — | 🔴 not started; what a stock peer expects is in [reports/PROTOCOL.md](reports/PROTOCOL.md) |
 
-Deliberate errors (mutation step): 23 of 23 rejected by the proofs. Code size of the three proved modules: about 1 KB on Cortex-M7; RAM about 4.5 KB.
+Deliberate errors (mutation step): 50 errors in 56 tool runs, every one rejected by the tool that should see it. Code size of all modules: 3,090 bytes on Cortex-M7; RAM 4,440 bytes; stack of the receive path at most 456 bytes.
 
 "Proved" here means: the code meets its written contract, for the tools' model of C. It does not mean that the contract is the right one, that the compiler is correct, or anything about timing. [reports/PROOFS.md](reports/PROOFS.md) lists every check and proof attempted, in plain words, with what each one does not show, and the attempts that failed.
 
 ## Documents
 
 - [reports/PROOFS.md](reports/PROOFS.md): every proof and check, explained for a reader who is not a specialist; limits; failed attempts.
+- [reports/PROTOCOL.md](reports/PROTOCOL.md): what a stock ZeroTier peer and controller expect from this leaf (messages, timings, configuration, membership), read from the reference source.
 - [CHECKLIST.md](CHECKLIST.md): target theorems, design levers, the list of provers to try and their status, further proof targets, the proof method learned so far.
 
 ## Check
 
 ```sh
-proofs/on-remote.sh start          # all steps: CBMC (64- and 32-bit model, reachability), Eva, WP (both models), target build
+proofs/on-remote.sh start          # all steps: CBMC (64- and 32-bit model, reachability), Eva, WP (both models), target build, test vectors
 proofs/on-remote.sh start mutate   # deliberate errors in the code; each must be rejected
 proofs/on-remote.sh wait           # wait for the end, copy results back; exit status 0 = all pass
 proofs/on-remote.sh status | stop | fetch
@@ -53,12 +54,15 @@ proofs/on-remote.sh status | stop | fetch
 
 No prover runs on the workstation. `proofs/on-remote.sh` copies the sources to another host (`ZTL_REMOTE`, default `prover-host`) and runs `proofs/run.sh` there as one systemd unit with a memory limit (`ZTL_MEM`, default 20G) and a time limit; `proofs/run.sh` refuses to start otherwise. The host needs `cbmc`, `z3`, `cvc5` (Ubuntu packages), Frama-C with WP and Alt-Ergo in the opam switch `ztl` (`proofs/opam-setup.sh start`, needs apt `graphviz` and `libgmp-dev`), and the Zephyr SDK ARM compiler in `~/ztl-sdk/arm-zephyr-eabi`. Results come back as `proofs/out-<step>.txt`.
 
-The CBMC harnesses for reassembly and for the receive gate are large; they run one per unit through `proofs/remote.sh start|status|stop|fetch` (`ZTL_REMOTE`, default `user@big-prover-host`), at reduced packet size (see `reports/PROOFS.md`).
+The CBMC harnesses for reassembly, for the receive gate and for the cryptography are large; they run one per unit through `proofs/remote.sh start|status|stop|fetch` (`ZTL_REMOTE`, default `user@big-prover-host`), at reduced packet size (see `reports/PROOFS.md`).
+
+The test vectors in `tests/vectors/reference.txt` come from the reference implementation. `tests/oracle/gen.sh <ZeroTier One source tree>` makes them again (on a build host); `proofs/run.sh vectors` checks the leaf against them. `proofs/poly_identity.wl` is an independent check of the Poly1305 arithmetic with a computer algebra system.
 
 ## Rules for the code
 
 - No `malloc`, no recursion, no variable-length arrays, no C library calls; every loop has a constant bound.
 - Every function that reads network input takes `(pointer, length)` and has a CBMC harness in `proofs/`.
+- No arithmetic wraps: every sum, product and conversion is proved to stay in its type; a result modulo 2^32 is written with `%`. No `#pragma` that switches a check off.
 - Interfaces carry the annotations of `include/ztl/annot.h` and, where a deductive proof is intended, an ACSL contract.
 - Sizes are constants in headers; RAM is the sum of static objects.
 

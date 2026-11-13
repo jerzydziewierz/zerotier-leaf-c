@@ -37,6 +37,14 @@ struct ztl_reasm {
 	struct ztl_reasm_slot slot[ZTL_RX_SLOTS];
 };
 
+/* Time from t to now on the 32-bit millisecond clock (contracts only). */
+#define ZTL_SPEC_AGE(now, t) ((4294967296 + (now) - (t)) % 4294967296)
+
+/*@ // Slot i holds a part that is not older than the timeout.
+  @ predicate ztl_slot_live{L}(struct ztl_reasm *r, integer i, integer now) =
+  @   r->slot[i].have != 0 && ZTL_SPEC_AGE(now, r->slot[i].t_ms) <= ZTL_REASM_TIMEOUT_MS;
+  @*/
+
 /*@ predicate ztl_slot_ok(struct ztl_reasm_slot *s) =
   @   s->have == 0 ||
   @   (s->have == ZTL_SLOT_HEAD && ZTL_PKT_MIN <= s->head_len <= ZTL_PKT_MAX) ||

@@ -34,10 +34,12 @@ static inline void ztl_put_le32(uint8_t *p, uint32_t v)
  * and does not replace the loop with a call to memset. The provers see
  * plain C.
  */
-#if defined(__GNUC__) && !defined(__FRAMAC__) && !defined(__CPROVER__)
+#if defined(__FRAMAC__) || defined(__CPROVER__)
+#define ZTL_KEEP_WRITES(p) ((void)(p))
+#elif defined(__GNUC__)
 #define ZTL_KEEP_WRITES(p) __asm__ __volatile__("" : : "r"(p) : "memory")
 #else
-#define ZTL_KEEP_WRITES(p) ((void)(p))
+#error "ZTL_KEEP_WRITES: no way known to keep wipe writes with this compiler"
 #endif
 
 /* Overwrite n words with zero. */

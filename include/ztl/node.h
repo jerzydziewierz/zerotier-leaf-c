@@ -60,6 +60,8 @@ struct ztl_rx_packet {
 //@ ghost int ztl_gh_auth_calls;
 //@ ghost int ztl_gh_auth_yes;
 //@ ghost const uint8_t *ztl_gh_auth_key;
+//@ ghost const uint8_t *ztl_gh_auth_pkt;
+//@ ghost size_t ztl_gh_auth_len;
 
 /*
  * Authentication primitive (Salsa20/12 + Poly1305 as ZeroTier composes them,
@@ -67,18 +69,26 @@ struct ztl_rx_packet {
  * Returns 1 if the 8-byte MAC is right for this key; then, if decrypt is not
  * zero, the bytes from the verb byte onward are decrypted in place.
  * Returns 0 otherwise and then does not change pkt.
+ * decrypt must say what the flags of the packet say (suite 1: 1, suite 0: 0).
  * A packet may be opened without decryption only if its verb is HELLO.
+ * This contract says what the function may change. It does not say WHEN the
+ * answer is 1: that is checked against the reference with test vectors.
  */
 /*@ requires ZTL_PKT_MIN <= len <= ZTL_PKT_MAX;
   @ requires \valid_read(key + (0 .. ZTL_KEY_LEN - 1));
   @ requires \valid(pkt + (0 .. len - 1));
   @ requires \separated(key + (0 .. ZTL_KEY_LEN - 1), pkt + (0 .. len - 1));
+  @ requires decrypt == 0 || decrypt == 1;
+  @ // The mode is the cipher suite of the packet: 1 decrypts, 0 does not; no other suite.
+  @ requires (pkt[ZTL_PKT_IDX_FLAGS] & ZTL_FLAG_CIPHER_HIGH) == 0;
+  @ requires decrypt == 1 <==> (pkt[ZTL_PKT_IDX_FLAGS] & ZTL_FLAG_CIPHER_LOW) != 0;
   @ requires decrypt == 0 ==> (pkt[ZTL_PKT_IDX_VERB] & ZTL_VERB_MASK) == ZTL_VERB_HELLO;
   @ requires ztl_gh_auth_calls < 2147483647;
-  @ assigns pkt[ZTL_PKT_IDX_VERB .. len - 1], ztl_gh_auth_calls, ztl_gh_auth_yes, ztl_gh_auth_key;
+  @ assigns pkt[ZTL_PKT_IDX_VERB .. len - 1], ztl_gh_auth_calls, ztl_gh_auth_yes, ztl_gh_auth_key,
+  @         ztl_gh_auth_pkt, ztl_gh_auth_len;
   @ ensures \result == 0 || \result == 1;
   @ ensures ztl_gh_auth_calls == \old(ztl_gh_auth_calls) + 1 && ztl_gh_auth_yes == \result;
-  @ ensures ztl_gh_auth_key == key;
+  @ ensures ztl_gh_auth_key == key && ztl_gh_auth_pkt == pkt && ztl_gh_auth_len == len;
   @ ensures (\result == 0 || decrypt == 0) ==>
   @   \forall integer i; ZTL_PKT_IDX_VERB <= i < len ==> pkt[i] == \old(pkt[i]);
   @*/
@@ -98,10 +108,11 @@ int ztl_auth_open(const uint8_t key[ZTL_KEY_LEN], uint8_t *ZTL_COUNT(len) pkt, s
   @ requires \valid_read(key + (0 .. ZTL_KEY_LEN - 1));
   @ requires \valid(pkt + (0 .. len - 1));
   @ requires \separated(key + (0 .. ZTL_KEY_LEN - 1), pkt + (0 .. len - 1));
+  @ requires encrypt == 0 || encrypt == 1;
   @ requires encrypt == 0 ==> (pkt[ZTL_PKT_IDX_VERB] & ZTL_VERB_MASK) == ZTL_VERB_HELLO;
   @ assigns pkt[ZTL_PKT_IDX_FLAGS .. len - 1];
   @ ensures pkt[ZTL_PKT_IDX_FLAGS] ==
-  @   ((\old(pkt[ZTL_PKT_IDX_FLAGS]) & ZTL_FLAGS_SEAL_KEEP) | (encrypt != 0 ? ZTL_FLAG_CIPHER_LOW : 0));
+  @   ((\old(pkt[ZTL_PKT_IDX_FLAGS]) & ZTL_FLAGS_SEAL_KEEP) | (encrypt == 1 ? ZTL_FLAG_CIPHER_LOW : 0));
   @ ensures encrypt == 0 ==>
   @   \forall integer i; ZTL_PKT_IDX_VERB <= i < len ==> pkt[i] == \old(pkt[i]);
   @*/
@@ -119,7 +130,7 @@ void ztl_auth_seal(const uint8_t key[ZTL_KEY_LEN], uint8_t *ZTL_COUNT(len) pkt, 
   @ requires \valid(dgram + (0 .. len - 1));
   @ requires \separated(n, out, dgram + (0 .. len - 1));
   @ assigns n->rx, n->reasm.slot[0 .. ZTL_RX_SLOTS - 1], dgram[0 .. len - 1], *out,
-  @         ztl_gh_auth_calls, ztl_gh_auth_yes, ztl_gh_auth_key;
+  @         ztl_gh_auth_calls, ztl_gh_auth_yes, ztl_gh_auth_key, ztl_gh_auth_pkt, ztl_gh_auth_len;
   @ ensures \result == 0 || \result == 1;
   @ ensures ztl_reasm_valid(&n->reasm);
   @ // The primitive is called at most once (the proof-only counter starts at 0 in each call).
@@ -134,7 +145,9 @@ void ztl_auth_seal(const uint8_t key[ZTL_KEY_LEN], uint8_t *ZTL_COUNT(len) pkt, 
   @   ztl_addr_same(&n->peer[out->peer].addr[0], out->body - (ZTL_PKT_MIN - ZTL_PKT_IDX_SRC)) &&
   @   ztl_addr_same(&n->self[0], out->body - (ZTL_PKT_MIN - ZTL_PKT_IDX_DEST)) &&
   @   (out->encrypted == 0 ==> out->verb == ZTL_VERB_HELLO) &&
-  @   out->body_len <= ZTL_PKT_MAX - ZTL_PKT_MIN;
+  @   out->body_len <= ZTL_PKT_MAX - ZTL_PKT_MIN &&
+  @   // the delivered body is the rest of exactly the packet that was authenticated
+  @   out->body == ztl_gh_auth_pkt + ZTL_PKT_MIN && out->body_len == ztl_gh_auth_len - ZTL_PKT_MIN;
   @ // No delivery: the output record is not written.
   @ ensures \result == 0 ==>
   @   out->peer == \old(out->peer) && out->verb == \old(out->verb) &&
