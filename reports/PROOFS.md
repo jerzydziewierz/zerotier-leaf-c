@@ -176,7 +176,7 @@ Errors that pass every check here, found by thinking and by review, not by a too
 
 ## What all of this does not show
 
-- The protocol layer exists and talks to the reference node on a host, but **nothing has run on a board, and no stock ZeroTier program or controller has been the other side yet.** `src/leaf.c` has no contracts: tests only (E-5, E-6, E-7). The Zephyr adapter has no test at all.
+- The protocol layer talks to the reference node on a host and, in a first run on a Teensy 4.1, to a stock controller and three stock 1.16.2 peers (configuration taken, ping with full-size frames, Telnet and SSH sessions over the overlay; a few minutes, no error counter moved). That run is an observation, not a test: no soak, no loss or rate figures, no hostile peer. `src/leaf.c` has no contracts: tests only (E-5, E-6, E-7). The Zephyr adapter has no test at all.
 - The leaf trusts its provisioning: the pairwise keys come from a host tool that uses the reference's key agreement code, which is taken as correct here (tested through E-6, not proved).
 - The leaf does not check the controller's signature on a configuration (it takes one only from the pinned controller, under the pairwise MAC) and does not evaluate the network's rules.
 - **No protection against replay.** A recorded authentic packet, sent again by someone on the path, delivers its frame again, marks the peer as heard, and draws the same answer (an 18-byte "need certificate" draws a certificate and a subscription each time). The answers to requests are safe (they count once, for the waiting packet ID). No rate limit on answers.

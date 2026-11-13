@@ -2,7 +2,7 @@
 
 This repository holds one thing: an implementation of a ZeroTier protocol v1 client ("leaf" node) in ISO C11 for small microcontrollers, written so that its properties can be machine-checked, together with the proofs. Every function that touches network input has a written contract, and tools (Frama-C WP, CBMC, Frama-C Eva) check the code against it.
 
-⏭ Work in progress. On a host it exchanges frames with the reference node; it has not run on a board yet.
+⏭ Work in progress. It runs on a Teensy 4.1 under Zephyr as a member of a private network with a stock controller and stock 1.16.2 peers (ping, Telnet and SSH over the overlay); no soak or rate measurement yet, and the protocol layer has tests but no proofs.
 
 ## Part of a bigger work
 
@@ -37,7 +37,7 @@ Limits by design: it does not evaluate the network's flow rules (it admits pinne
 | Dictionary reader (configuration format) | `src/dict.c` | ✅ proved with WP for memory safety; same answers as the reference reader on 198 dictionaries |
 | Protocol messages: HELLO, OK, ECHO, configuration request and reply, certificate push, multicast subscription, frames both ways, sends in two datagrams | `src/leaf.c`, `include/ztl/leaf.h` | ✅ exchanges frames with the reference node on a host (loopback test); protocol test with known answers and random authentic packets under sanitizers. 🔴 No contracts yet: tests only |
 | Provisioning (pairwise keys from the identities, with the reference code) | `tools/provision/` | ✅ used by the loopback test. The key agreement is the reference's code: a trusted component, not proved |
-| Zephyr adapter (virtual Ethernet interface, one thread, no heap) | `zephyr/` | ⏭ builds for the Teensy 4.1; not yet run on a board; no test |
+| Zephyr adapter (virtual Ethernet interface, one thread, no heap) | `zephyr/` | ⏭ runs on the Teensy 4.1 (first run 2026-11-13: member of a network, ping, TCP sessions); no test of its own, no soak |
 
 Deliberate errors (mutation step): 98 errors in 104 tool runs, every one rejected by the tool that should see it. Measured in a firmware build for the Cortex-M7: code of the leaf 7,525 bytes, Zephyr adapter 2,076 bytes; RAM of the leaf 7,136 bytes (`struct ztl_leaf`), of the whole Zephyr module 15.8 KB with its thread stack and three packet buffers. The reference solution adds about 110 KB of RAM and 400 KB of code.
 
