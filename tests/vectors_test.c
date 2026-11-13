@@ -8,13 +8,20 @@
  *      ztl_auth_open() must accept them and give the plain packet back, and
  *      must refuse the packet, without changing it, after any one-bit change
  *      outside the hop count, with a wrong length and with a wrong key.
+ *   Z: packet payload and its LZ4 block. ztl_lz4_decode() must give the
+ *      payload, in a buffer of exactly that size, and must refuse a buffer
+ *      that is one byte smaller and a block that is one byte shorter.
+ *   M: Ethernet address of a node on a network (ztl_mac_of()).
+ *   D: dictionary made by the reference, a key, and its value or "none"
+ *      (ztl_dict_get(); also with a buffer that is one byte too small).
  * Usage: vectors_test <file>. Exit status 0 only if every vector passes.
  */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "ztl/node.h"
+#include "leaf_internal.h"
+#include "ztl/lz4.h"
 
 #define LINE_MAX_LEN 20000u
 
@@ -190,10 +197,89 @@ static void test_armor(char *s)
 	expect_refused(key, want, len, enc, "another key (byte 0)", len);
 }
 
+static void test_lz4(char *s)
+{
+	static uint8_t plain[ZTL_PKT_MAX], comp[ZTL_PKT_MAX];
+	const size_t pl = field(&s, plain, sizeof(plain));
+	const size_t cl = field(&s, comp, sizeof(comp));
+
+	CHECK(pl > 64 && cl >= 1 && cl < pl, "LZ4 vector format");
+	/* Buffers of the exact sizes, from the heap: the address sanitizer
+	 * then sees any access outside them. */
+	uint8_t *src = malloc(cl), *dst = malloc(pl), *shorter = malloc(cl - 1u + 1u);
+
+	if (src == NULL || dst == NULL || shorter == NULL) {
+		exit(2);
+	}
+	memcpy(src, comp, cl);
+	CHECK(ztl_lz4_decode(dst, pl, src, cl) == pl, "LZ4: wrong length (%zu bytes)", pl);
+	CHECK(memcmp(dst, plain, pl) == 0, "LZ4: decoded bytes differ (%zu bytes)", pl);
+	CHECK(ztl_lz4_decode(dst, pl - 1u, src, cl) == 0, "LZ4: output buffer one byte too small accepted");
+	memcpy(shorter, comp, cl - 1u);
+	CHECK(ztl_lz4_decode(dst, pl, shorter, cl - 1u) == 0, "LZ4: block one byte too short accepted");
+	free(src);
+	free(dst);
+	free(shorter);
+}
+
+static void test_mac(char *s)
+{
+	uint8_t addr[5], nwid[8], want[6], got[6];
+	const size_t al = field(&s, addr, sizeof(addr));
+	const size_t nl = field(&s, nwid, sizeof(nwid));
+	const size_t wl = field(&s, want, sizeof(want));
+
+	CHECK(al == 5 && nl == 8 && wl == 6, "MAC vector format");
+	ztl_mac_of(got, addr, nwid);
+	CHECK(memcmp(got, want, 6) == 0, "Ethernet address differs");
+}
+
+static void test_dict(char *s)
+{
+	static uint8_t dict[ZTL_PKT_MAX], want[ZTL_PKT_MAX], got[ZTL_PKT_MAX];
+	uint8_t key[8];
+	const size_t dl = field(&s, dict, sizeof(dict));
+	const size_t kl = field(&s, key, sizeof(key));
+	int absent = 0;
+	size_t wl = 0;
+
+	while (*s == ' ') {
+		s++;
+	}
+	if (strncmp(s, "none", 4) == 0) {
+		absent = 1;
+	} else {
+		wl = field(&s, want, sizeof(want));
+	}
+	CHECK(kl >= 1, "dictionary vector format");
+	/* The dictionary in a heap block of its exact size (see test_lz4). */
+	uint8_t *d = malloc(dl ? dl : 1u), *out = malloc(wl ? wl : 1u);
+
+	if (d == NULL || out == NULL) {
+		exit(2);
+	}
+	memcpy(d, dict, dl);
+	const int r = ztl_dict_get(d, dl, (const char *)key, kl, got, sizeof(got));
+
+	if (absent) {
+		CHECK(r == -1, "dictionary: value found for an absent key");
+	} else {
+		CHECK(r == (int)wl && memcmp(got, want, wl) == 0, "dictionary: value differs (%d, expected %zu bytes)", r, wl);
+		CHECK(ztl_dict_get(d, dl, (const char *)key, kl, out, wl) == (int)wl && memcmp(out, want, wl) == 0,
+		      "dictionary: value differs in a buffer of its exact size");
+		if (wl > 0) {
+			CHECK(ztl_dict_get(d, dl, (const char *)key, kl, out, wl - 1u) == -1,
+			      "dictionary: buffer one byte too small accepted");
+		}
+	}
+	free(d);
+	free(out);
+}
+
 int main(int argc, char **argv)
 {
 	static char line[LINE_MAX_LEN];
-	unsigned long np = 0, ns = 0, na = 0;
+	unsigned long np = 0, ns = 0, na = 0, nz = 0, nm = 0, nd = 0;
 
 	if (argc != 2) {
 		fprintf(stderr, "usage: %s <vector file>\n", argv[0]);
@@ -216,12 +302,16 @@ int main(int argc, char **argv)
 		case 'S': test_salsa(line + 1); ns++; break;
 		case 'T': test_salsa_block(line + 1); ns++; break;
 		case 'A': test_armor(line + 1); na++; break;
+		case 'Z': test_lz4(line + 1); nz++; break;
+		case 'M': test_mac(line + 1); nm++; break;
+		case 'D': test_dict(line + 1); nd++; break;
 		case '#': break;
 		default: fprintf(stderr, "line %lu: unknown kind\n", g_line); return 2;
 		}
 	}
 	fclose(f);
-	printf("vectors: %lu Poly1305, %lu Salsa20/12, %lu packets; %lu checks, %lu failed\n", np, ns, na, g_checks, g_fail);
+	printf("vectors: %lu Poly1305, %lu Salsa20/12, %lu packets, %lu LZ4, %lu MAC, %lu dictionary; %lu checks, %lu failed\n", np, ns,
+	       na, nz, nm, nd, g_checks, g_fail);
 	/* A file without vectors is a failure, not a pass. */
-	return (g_fail == 0 && np > 0 && ns > 0 && na > 0) ? 0 : 1;
+	return (g_fail == 0 && np > 0 && ns > 0 && na > 0 && nz > 0 && nm > 0 && nd > 0) ? 0 : 1;
 }

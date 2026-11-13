@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Run every proof. Exit status 0 only if every tool ran, exited 0 and
 # reported the expected result (a tool that proves nothing is a failure).
-# Usage: proofs/run.sh [cbmc|cbmc32|cover|cbmcpoly|eva|wp|wp32|target|vectors|mutate]...
-# Default: cbmc cbmc32 cover cbmcpoly eva wp wp32 target vectors. cbmcpoly is the one
+# Usage: proofs/run.sh [cbmc|cbmc32|cover|cbmcpoly|eva|wp|wp32|target|vectors|proto|mutate]...
+# Default: cbmc cbmc32 cover cbmcpoly eva wp wp32 target vectors proto. proto is the host
+# test of the protocol layer (fixed cases, then random authentic packets, with sanitizers). cbmcpoly is the one
 # CBMC harness of the cryptography that ends in seconds (Poly1305 limb limits,
 # induction step); the others run through proofs/remote.sh. cbmc32 and wp32 repeat the
 # proofs with a 32-bit data model (CBMC: arm, on sources preprocessed by the
@@ -15,11 +16,11 @@ cd "$(dirname "$0")/.."
 # Provers do not run on the workstation: start this script through
 # proofs/on-remote.sh, which sets ZTL_ON_REMOTE and a memory limit for the run.
 [ "${ZTL_ON_REMOTE:-}" = 1 ] || { echo "run.sh: use proofs/on-remote.sh start [steps] (no local prover runs)"; exit 2; }
-tools=("$@"); [ ${#tools[@]} -eq 0 ] && tools=(cbmc cbmc32 cover cbmcpoly eva wp wp32 target vectors)
+tools=("$@"); [ ${#tools[@]} -eq 0 ] && tools=(cbmc cbmc32 cover cbmcpoly eva wp wp32 target vectors proto)
 FC0="opam exec --switch ztl -- frama-c -cpp-extra-args=-Iinclude -cpp-extra-args=-Isrc"
 # Units proved by WP, each alone: a function is proved against its contract,
 # and callers use the contracts of what they call.
-WP_UNITS=${ZTL_WP_UNITS:-"src/wire.c src/reasm.c proofs/reasm_wp.c src/rx.c src/salsa.c src/poly.c src/auth.c"}
+WP_UNITS=${ZTL_WP_UNITS:-"src/wire.c src/reasm.c proofs/reasm_wp.c src/rx.c src/salsa.c src/poly.c src/auth.c src/lz4.c src/dict.c"}
 # WP also proves that no unsigned sum or product wraps and that no conversion
 # to a narrower unsigned type loses bits (C defines both, the code never wants them).
 WP_STRICT="-warn-unsigned-overflow -warn-unsigned-downcast"
@@ -89,7 +90,12 @@ for t in "${tools[@]}"; do
 		cc -std=c11 -O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all -Wall -Wextra -Wpedantic -Werror \
 			-Iinclude -Isrc src/*.c tests/vectors_test.c -o proofs/out-vectors-test > $o 2>&1 \
 			&& proofs/out-vectors-test tests/vectors/reference.txt >> $o 2>&1
-		s=$?; grep -qE '^vectors: [1-9][0-9]* Poly1305, [1-9][0-9]* Salsa20/12, [1-9][0-9]* packets; [1-9][0-9]* checks, 0 failed$' $o || s=1 ;;
+		s=$?; grep -qE '^vectors: [1-9][0-9]* Poly1305, [1-9][0-9]* Salsa20/12, [1-9][0-9]* packets, [1-9][0-9]* LZ4, [1-9][0-9]* MAC, [1-9][0-9]* dictionary; [1-9][0-9]* checks, 0 failed$' $o || s=1 ;;
+	proto) # Host build with sanitizers: protocol layer, fixed cases and random authentic packets.
+		cc -std=c11 -O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all -Wall -Wextra -Wpedantic -Werror \
+			-Iinclude -Isrc src/*.c tests/proto_test.c -o proofs/out-proto-test > $o 2>&1 \
+			&& proofs/out-proto-test 300000 >> $o 2>&1
+		s=$?; grep -qE '^proto: [1-9][0-9]* fixed checks; [1-9][0-9]* random rounds, .*; [1-9][0-9]* checks, 0 failed$' $o || s=1 ;;
 	mutate) # Each error is applied to a COPY of the sources (proofs/out-mut), never
 		# to the sources themselves: a stopped run cannot leave a changed file.
 		: > $o; s=0; M=proofs/out-mut
@@ -167,6 +173,49 @@ src/auth.c|vectors|auth: hop count mixed into the key|s/out\[18\] = key\[18\] ^ 
 src/auth.c|vectors|auth: packet length not mixed into the key|s/out\[19\] = key\[19\] ^ (uint8_t)(len % 256u);/out[19] = key[19];/
 src/auth.c|wp|auth: seal leaves suite bits of the caller in the flags|s/(pkt\[ZTL_PKT_IDX_FLAGS\] & ZTL_FLAGS_SEAL_KEEP) |/(pkt[ZTL_PKT_IDX_FLAGS] \& 0xf7u) |/
 src/auth.c|vectors|auth: seal leaves suite bits of the caller in the flags|s/(pkt\[ZTL_PKT_IDX_FLAGS\] & ZTL_FLAGS_SEAL_KEEP) |/(pkt[ZTL_PKT_IDX_FLAGS] \& 0xf7u) |/
+src/lz4.c|wp|lz4: a match may start before the output|s/if (off == 0u || off > op) {/if (off == 0u || off > op + 1u) {/
+src/lz4.c|wp|lz4: literals copied without the output limit|s/if (lit > n - ip || lit > cap - op) {/if (lit > n - ip) {/
+src/lz4.c|wp|lz4: literals read past the end of the block|s/if (lit > n - ip || lit > cap - op) {/if (lit > cap - op) {/
+src/lz4.c|wp|lz4: match copied without the output limit|s/		if (len > cap - op) {/		if (0) {/
+src/lz4.c|vectors|lz4: match length without the minimum of 4|s/#define LZ4_MIN_MATCH 4u/#define LZ4_MIN_MATCH 3u/
+src/lz4.c|vectors|lz4: offset bytes in the wrong order|s/const size_t off = src\[ip\] + 256u \* src\[ip + 1u\];/const size_t off = 256u * src[ip] + src[ip + 1u];/
+src/lz4.c|vectors|lz4: length extension stops after one byte|s/		if (b != LZ4_BYTE_MORE) {/		if (1) {/
+src/lz4.c|vectors|lz4: output buffer one byte too small accepted|s/if (lit > n - ip || lit > cap - op) {/if (lit > n - ip || lit > cap - op + 1u) {/
+src/dict.c|vectors|dict: key accepted without the equals sign after it|s/if (klen < n - i \&\& d\[i + klen\] == '=' \&\& /if (klen < n - i \&\& /
+src/dict.c|vectors|dict: escape for the zero byte not decoded|s/(c == '0') ? 0u : //
+src/dict.c|vectors|dict: a value longer than the buffer is cut, not refused|s/			return -1; \/\* the value does not fit \*\//			return (int)j;/
+src/dict.c|vectors|dict: value not ended by a carriage return|s/return c == 0u || c == DICT_LF || c == DICT_CR;/return c == 0u || c == DICT_LF;/
+src/dict.c|wp|dict: value copy one byte past the buffer|s/		if (j == cap) {/		if (j == cap + 1u) {/
+src/leaf.c|proto|leaf: packet ID not advanced (the same nonce again)|s/l->next_id = (id == UINT64_MAX) ? 0u : id + 1u;/l->next_id = id;/
+src/leaf.c|proto|leaf: HELLO says protocol version 13|s/	b\[0\] = ZTL_PROTO_VERSION;/	b[0] = 13u;/
+src/leaf.c|proto|leaf: OK(HELLO) says protocol version 13|s/	o\[8\] = ZTL_PROTO_VERSION;/	o[8] = 13u;/
+src/leaf.c|proto|leaf: HELLO with a foreign identity answered|s/if (n < HELLO_FIXED + IDENTITY_LEN || !ztl_bytes_eq(\&b\[HELLO_FIXED\], \&pkt\[ZTL_PKT_IDX_SRC\], ZTL_ADDR_LEN)) {/if (n < HELLO_FIXED + IDENTITY_LEN) {/
+src/leaf.c|proto|leaf: frame delivered without a configuration|/count(\&l->stats.rx_no_config);/{n;s/return 0;/;/}
+src/leaf.c|proto|leaf: frame with a foreign source delivered|s/(src != NULL \&\& !ztl_bytes_eq(src, peer_mac, ZTL_ETH_ALEN))/0/
+src/leaf.c|proto|leaf: frame longer than the MTU delivered|s/if (len < 1u || len > l->mtu || (src/if (len < 1u || (src/
+src/leaf.c|proto|leaf: frame of another network delivered|s/if (n <= FRAME_HDR || !ztl_bytes_eq(b, l->nwid, ZTL_NWID_LEN)) {/if (n <= FRAME_HDR) {/
+src/leaf.c|proto|leaf: frame for a third station delivered|s/if (!ztl_bytes_eq(to, l->mac, ZTL_ETH_ALEN) \&\& (to\[0\] \& 0x01u) == 0u) {/if (0) {/
+src/leaf.c|proto|leaf: multicast frame to a single station delivered|s/	if ((b\[at\] \& 0x01u) == 0u) {/	if (0) {/
+src/leaf.c|proto|leaf: certificate in a frame not checked for its length|s/	return (avail < need) ? 0u : need;/	return need;/
+src/leaf.c|proto|leaf: configuration push accepted from any peer|s/^\t\tif (i == l->ctrl) {/\t\tif (1) {/
+src/leaf.c|proto|leaf: configuration answer taken for another request|s/ \&\& id == l->cfg_req_id) {/) {/
+src/leaf.c|proto|leaf: configuration answer taken twice|s/			l->flags \&= (uint8_t)~ZTL_L_REQ_WAIT;/			;/
+src/leaf.c|proto|leaf: older pushed configuration accepted|s/ts <= l->cfg_ts/0/
+src/leaf.c|proto|leaf: configuration for another node accepted|s/ || id != ztl_be64(self8)//
+src/leaf.c|proto|leaf: configuration for another network accepted|s/ || nwid != ztl_be64(l->nwid)//
+src/leaf.c|proto|leaf: configuration of a public network accepted|s/ || type != 0u ||/ ||/
+src/leaf.c|proto|leaf: MTU out of range accepted|s/ || mtu < ZTL_MTU_MIN || mtu > ZTL_MTU_MAX//
+src/leaf.c|proto|leaf: configuration in more than one chunk accepted|s/ || ztl_be32(\&t\[9\]) != chunk//
+src/leaf.c|proto|leaf: certificate with a wrong length accepted|s/if (cn < 1 || com_len_at(l->com, (size_t)cn) != (size_t)cn) {/if (cn < 1) {/
+src/leaf.c|proto|leaf: ECHO longer than a packet answered|s/	if (n > ZTL_PKT_MAX - (ZTL_PKT_MIN + OK_HDR)) {/	if (0) {/
+src/leaf.c|proto|leaf: "fragmented" flag not set on a packet in two parts|s/		tx\[ZTL_PKT_IDX_FLAGS\] = ZTL_FLAG_FRAGMENTED;/		;/
+src/leaf.c|proto|leaf: fragment header without the destination|s/ztl_copy_bytes(\&pkt\[h\], pkt, ID_LEN + ZTL_ADDR_LEN);/ztl_copy_bytes(\&pkt[h], pkt, ID_LEN);/
+src/leaf.c|proto|leaf: no new certificate after the peer asked|s/		l->ps\[i\].flags \&= (uint8_t)~(ZTL_P_COM_SENT | ZTL_P_LIKE_SENT);/		;/
+src/leaf.c|proto|leaf: encrypted packets to a peer that was never heard|s/^\tif ((s->flags \& ZTL_P_SEEN) == 0u) {/\tif (0) {/
+src/leaf.c|proto|leaf: a silent peer is never forgotten|s/ztl_age_ms(now_ms, s->rx_ms) > ZTL_PEER_TIMEOUT_MS/0/
+src/leaf.c|proto|leaf: unicast frame sent to a peer that does not own the address|s/	if (!ztl_bytes_eq(dst, peer_mac, ZTL_ETH_ALEN)) {/	if (0) {/
+src/leaf.c|proto|leaf: ARP request sent without the address as group number|s/ztl_copy_bytes(\&b\[ZTL_NWID_LEN + 1u + ZTL_ETH_ALEN\], \&data\[24\], 4u);/zero(\&b[ZTL_NWID_LEN + 1u + ZTL_ETH_ALEN], 4u);/
+src/leaf.c|proto|leaf: subscription without the ARP group of the own address|s/	if (l->prefix != 0u) {/	if (0) {/
 MUT
 		rm -rf $M ;;
 	*) echo "unknown tool $t"; exit 2 ;;

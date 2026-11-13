@@ -8,11 +8,17 @@
 //   S <key 32> <iv 8> <key stream of blocks 0, 1, 2: 192 bytes>
 //   T <key 32> <iv 8> <block number, 8 hex digits> <that key stream block: 64 bytes>
 //   A <key 32> <encrypt 0|1> <packet before armor> <packet after armor>
+//   Z <packet payload> <the same payload after Packet::compress() (one LZ4 block)>
+//   M <address 5> <network ID 8> <Ethernet address 6 of that node on that network>
+//   D <dictionary> <key, as bytes> <value, "-" if empty; the word "none" if the key is absent>
+#include "Dictionary.hpp"
 #include "Identity.hpp"
+#include "MAC.hpp"
 #include "Packet.hpp"
 #include "Poly1305.hpp"
 #include "Salsa20.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -81,6 +87,25 @@ static void armor_line(size_t len, int encrypt)
 	hex(plain.data(), len);
 	putchar(' ');
 	hex((const uint8_t*)pkt.data(), len);
+	putchar('\n');
+}
+
+// One payload through Packet::compress(). No line if the reference would
+// send it as it is (64 bytes or less, or not smaller after compression).
+static void lz4_line(const std::vector<uint8_t>& body)
+{
+	std::vector<uint8_t> plain(28 + body.size());
+	fill(plain.data(), 28);
+	plain[27] &= 0x1f;
+	memcpy(plain.data() + 28, body.data(), body.size());
+	Packet pkt(plain.data(), (unsigned int)plain.size());
+	if (! pkt.compress()) {
+		return;
+	}
+	fputs("Z ", stdout);
+	hex(body.data(), body.size());
+	putchar(' ');
+	hex((const uint8_t*)pkt.data() + 28, pkt.size() - 28);
 	putchar('\n');
 }
 
@@ -185,6 +210,117 @@ int main(void)
 		for (int rep = 0; rep < 1; rep++) {
 			armor_line(len, 1);
 			armor_line(len, 0);
+		}
+	}
+
+	// LZ4 (new kinds of vectors go below this line: one random stream, so
+	// the vectors above stay as they are).
+	// Runs of one byte: long matches at offset 1, lengths that need extension bytes.
+	for (size_t n : { (size_t)65, (size_t)66, (size_t)83, (size_t)84, (size_t)300, (size_t)339, (size_t)340, (size_t)1000, (size_t)2020 }) {
+		lz4_line(std::vector<uint8_t>(n, (uint8_t)rnd()));
+	}
+	// Repeated patterns: matches that overlap their own output.
+	for (size_t period : { (size_t)2, (size_t)3, (size_t)4, (size_t)5, (size_t)7, (size_t)8, (size_t)13, (size_t)16, (size_t)31, (size_t)64, (size_t)255, (size_t)256, (size_t)300 }) {
+		std::vector<uint8_t> v(2020);
+		fill(v.data(), period);
+		for (size_t i = period; i < v.size(); i++) {
+			v[i] = v[i - period];
+		}
+		lz4_line(v);
+	}
+	// Text in the form of a network configuration, with binary values.
+	for (int k = 0; k < 12; k++) {
+		std::vector<uint8_t> v;
+		static const char* keys[] = { "v=7\n", "nwid=c0ffee0001000001\n", "ts=19a7c3f5e21\n", "r=2a\n", "id=1a2b3c4d5e\n", "f=6\n", "ml=20\n", "t=0\n", "mtu=500\n", "n=testnet\n", "ctmd=1b7740\n" };
+		const size_t want = 100 + (size_t)(rnd() % 1900);
+		while (v.size() < want) {
+			const char* t = keys[rnd() % 11];
+			v.insert(v.end(), t, t + strlen(t));
+			if ((rnd() & 3) == 0) {
+				const size_t bin = (size_t)(rnd() % 120);
+				v.push_back('C');
+				v.push_back('=');
+				for (size_t i = 0; i < bin; i++) {
+					v.push_back((uint8_t)((rnd() & 1) ? rnd() : 0));
+				}
+				v.push_back('\n');
+			}
+		}
+		v.resize(std::min(v.size(), (size_t)2020));
+		lz4_line(v);
+	}
+	// Random bytes with repeated stretches: literal runs of every size between matches.
+	for (int k = 0; k < 24; k++) {
+		std::vector<uint8_t> v(66 + (size_t)(rnd() % 1955));
+		fill(v.data(), v.size());
+		for (int rep = 0; rep < 1 + (int)(rnd() % 12); rep++) {
+			const size_t len = 4 + (size_t)(rnd() % 400);
+			const size_t to = (size_t)(rnd() % v.size());
+			const size_t from = (size_t)(rnd() % (to + 1));
+			for (size_t i = 0; i < len && to + i < v.size(); i++) {
+				v[to + i] = v[from + i];
+			}
+		}
+		lz4_line(v);
+	}
+
+	// Ethernet address from node address and network ID (MAC::fromAddress()).
+	for (int k = 0; k < 24; k++) {
+		uint8_t a[5], n[8], m[6];
+		fill(a, 5);
+		fill(n, 8);
+		if (k < 4) {
+			n[7] = (uint8_t)(0x50 + k); // first byte would be 0x52: the reference changes it
+		}
+		uint64_t nw = 0;
+		for (int i = 0; i < 8; i++) {
+			nw = (nw << 8) | n[i];
+		}
+		MAC mac;
+		mac.fromAddress(Address(a, 5), nw);
+		mac.copyTo(m, 6);
+		fputs("M ", stdout);
+		hex(a, 5);
+		putchar(' ');
+		hex(n, 8);
+		putchar(' ');
+		hex(m, 6);
+		putchar('\n');
+	}
+
+	// Dictionaries made by Dictionary::add(): keys that are the start of
+	// other keys, values with every byte that needs an escape.
+	for (int k = 0; k < 12; k++) {
+		static const char* keys[] = { "v", "nwid", "ts", "t", "tt", "id", "I", "C", "COO", "mtu", "r", "RT" };
+		Dictionary<2048> d;
+		std::vector<uint8_t> values[12];
+		bool have[12] = {};
+		const int start = (int)(rnd() % 12);
+		for (int j = 0; j < 12; j++) {
+			const int i = (start + j * 5) % 12; // every key once, order differs between dictionaries
+			if ((rnd() & 3) == 0) {
+				continue;
+			}
+			values[i].resize((size_t)(rnd() % ((rnd() & 3) ? 12 : 300)));
+			for (auto& c : values[i]) {
+				static const uint8_t special[] = { 0, 10, 13, '=', '\\', 'n', 'r', 'e', '0' };
+				c = (rnd() & 1) ? special[rnd() % sizeof(special)] : (uint8_t)rnd();
+			}
+			have[i] = d.add(keys[i], (const char*)values[i].data(), (int)values[i].size());
+		}
+		for (int i = 0; i < 12; i++) {
+			fputs("D ", stdout);
+			hex((const uint8_t*)d.data(), d.sizeBytes());
+			putchar(' ');
+			hex((const uint8_t*)keys[i], strlen(keys[i]));
+			putchar(' ');
+			if (have[i]) {
+				hex(values[i].data(), values[i].size());
+			}
+			else {
+				fputs("none", stdout);
+			}
+			putchar('\n');
 		}
 	}
 	return 0;

@@ -18,4 +18,4 @@ g++ -std=c++17 -O2 -DZT_NO_TYPE_PUNNING -DZT_NO_UNALIGNED_ACCESS -DZT_NO_PEER_ME
 	"$B/gen"
 } > "$OUT.tmp"
 mv "$OUT.tmp" "$OUT"
-echo "$OUT: $(grep -c '^P' "$OUT") Poly1305, $(grep -c '^[ST]' "$OUT") Salsa20/12, $(grep -c '^A' "$OUT") packet vectors"
+echo "$OUT: $(grep -c '^P' "$OUT") Poly1305, $(grep -c '^[ST]' "$OUT") Salsa20/12, $(grep -c '^A' "$OUT") packet, $(grep -c '^Z' "$OUT") LZ4, $(grep -c '^M' "$OUT") MAC, $(grep -c '^D' "$OUT") dictionary vectors"

@@ -7,6 +7,7 @@
  * pinned peer and has a right MAC. Its contents are still input to check:
  * a pinned peer can be faulty.
  */
+#include "crypto_internal.h"
 #include "leaf_internal.h"
 #include "reasm_internal.h"
 #include "ztl/lz4.h"
@@ -84,6 +85,7 @@ static void zero(uint8_t *p, size_t n)
 	  @*/
 	for (size_t i = 0; i < n; i++) {
 		p[i] = 0;
+		ZTL_KEEP_WRITES(p); /* else the compiler makes this loop a call to memset */
 	}
 }
 
@@ -108,17 +110,27 @@ void ztl_mac_of(uint8_t mac[ZTL_ETH_ALEN], const uint8_t addr[ZTL_ADDR_LEN], con
 void ztl_init(struct ztl_leaf *l, const uint8_t self[ZTL_ADDR_LEN], const uint8_t pub[ZTL_PUB_LEN],
 	      const uint8_t nwid[ZTL_NWID_LEN], uint64_t first_packet_id)
 {
-	static const struct ztl_stats no_stats;
-	static const struct ztl_rx_stats no_rx_stats;
-
 	ztl_copy_bytes(l->node.self, self, ZTL_ADDR_LEN);
 	for (unsigned int i = 0; i < ZTL_PEERS; i++) {
 		l->node.peer[i].pinned = 0;
 		l->ps[i].flags = 0;
 	}
 	ztl_reasm_init(&l->node.reasm);
-	l->node.rx = no_rx_stats;
-	l->stats = no_stats;
+	l->node.rx.ok = 0;
+	l->node.rx.not_wire = 0;
+	l->node.rx.not_ours = 0;
+	l->node.rx.no_peer = 0;
+	l->node.rx.bad_suite = 0;
+	l->node.rx.bad_auth = 0;
+	l->stats.rx_lz4 = 0;
+	l->stats.rx_bad_lz4 = 0;
+	l->stats.rx_bad_form = 0;
+	l->stats.rx_no_config = 0;
+	l->stats.rx_ignored = 0;
+	l->stats.rx_frames = 0;
+	l->stats.tx_packets = 0;
+	l->stats.configs = 0;
+	l->stats.config_bad = 0;
 	l->next_id = first_packet_id;
 	l->cfg_req_id = 0;
 	l->cfg_ts = 0;
