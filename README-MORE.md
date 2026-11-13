@@ -2,12 +2,24 @@
 
 This is one part of a larger project: ZeroTier overlay networking on the Zephyr RTOS, first target Teensy 4.1 (NXP i.MX RT1062, Cortex-M7).
 
-| Part | Where | What |
-|---|---|---|
-| Reference solution | https://github.com/jerzydziewierz/zephyr-zerotier-leaf | Restricted ZeroTier One 1.16.2 C++ core as a Zephyr module, tested on hardware with stock ZeroTier peers. About 110 KB of added RAM. |
-| **This repository** | `zerotier-leaf-c` | The same wire protocol written again in C: no heap, fixed tables, bounded packets, with proofs. The reference solution is its test oracle. |
-| Zephyr integration, application, measurements | the project workspace (not public) | Zephyr adapter, the Teensy application, USB networking work, bench results. |
-| Write-ups | https://www.rey.wiki/george | Measured results and reports. |
+```yaml
+- part: "Reference solution"
+  where: "https://github.com/jerzydziewierz/zephyr-zerotier-leaf"
+  what: >-
+    Restricted ZeroTier One 1.16.2 C++ core as a Zephyr module, tested on hardware with stock
+    ZeroTier peers. About 110 KB of added RAM.
+- part: "This repository"
+  where: "`zerotier-leaf-c`"
+  what: >-
+    The same wire protocol written again in C: no heap, fixed tables, bounded packets, with proofs.
+    The reference solution is its test oracle.
+- part: "Zephyr integration, application, measurements"
+  where: "the project workspace (not public)"
+  what: "Zephyr adapter, the Teensy application, USB networking work, bench results."
+- part: "Write-ups"
+  where: "https://www.rey.wiki/george"
+  what: "Measured results and reports."
+```
 
 The goal of this part is twofold: reduce RAM far below the reference solution, and find out how far several theorem-proving methods get on real embedded network code. The plan is to show both solutions side by side in the public repository when this one can talk to a network.
 
@@ -16,19 +28,61 @@ Paths such as `../grey_zerotier/` and `../dl/sdk/` in scripts and documents poin
 
 ## Status
 
-| Module | File | State |
-|---|---|---|
-| Datagram classifier | `src/wire.c` | ✅ proved: exact contract (WP), all inputs up to 2049 bytes (CBMC), checked against a model of the reference receive path |
-| Reassembly (head + one fragment) | `src/reasm.c` | ✅ proved at full packet size (WP, small functions with contracts); cross-checked with CBMC at reduced size |
-| Receive gate ("authentication before effects") | `src/rx.c` | ✅ proved with WP against the contract of the authentication primitive; CBMC cross-check has no result yet |
-| Packet authentication and encryption (key mixing, Salsa20/12, Poly1305, open and seal) | `src/auth.c`, `src/salsa.c`, `src/poly.c` | ✅ same bytes as the reference on test vectors made by the reference; proved with WP: memory safety, no arithmetic wrap, the contract that the gate uses, the arithmetic of each Poly1305 step. ⏭ Not yet proved: Poly1305 over a whole message, any statement about the Salsa20/12 output, constant time |
-| LZ4 block decoder (a controller always compresses the configuration) | `src/lz4.c` | ✅ proved with WP for every input: no access outside either buffer, no wrap, every loop ends; same bytes as the reference on 58 blocks made by the reference |
-| Dictionary reader (configuration format) | `src/dict.c` | ✅ proved with WP for memory safety; same answers as the reference reader on 198 dictionaries |
-| Protocol messages: HELLO, OK, ECHO, configuration request and reply, certificate push, multicast subscription, frames both ways, sends in two datagrams | `src/leaf.c`, `include/ztl/leaf.h` | ✅ exchanges frames with the reference node on a host (loopback test); protocol test with known answers and random authentic packets under sanitizers. 🔴 No contracts yet: tests only |
-| Provisioning (pairwise keys from the identities, with the reference code) | `tools/provision/` | ✅ used by the loopback test. The key agreement is the reference's code: a trusted component, not proved |
-| Zephyr adapter (virtual Ethernet interface, one thread, no heap) | `zephyr/` | ⏭ runs on the Teensy 4.1 (first run 2026-11-13: member of a network, ping, TCP sessions); no test of its own, no soak |
+```yaml
+- module: "Datagram classifier"
+  file: "`src/wire.c`"
+  state: >-
+    ✅ proved: exact contract (WP), all inputs up to 2049 bytes (CBMC), checked against a model of
+    the reference receive path
+- module: "Reassembly (head + one fragment)"
+  file: "`src/reasm.c`"
+  state: >-
+    ✅ proved at full packet size (WP, small functions with contracts); cross-checked with CBMC at
+    reduced size
+- module: "Receive gate (\"authentication before effects\")"
+  file: "`src/rx.c`"
+  state: >-
+    ✅ proved with WP against the contract of the authentication primitive, at full packet size;
+    cross-checked with CBMC at 40-byte packets
+- module: "Packet authentication and encryption (key mixing, Salsa20/12, Poly1305, open and seal)"
+  file: "`src/auth.c`, `src/salsa.c`, `src/poly.c`"
+  state: >-
+    ✅ same bytes as the reference on test vectors made by the reference; proved with WP: memory
+    safety, no arithmetic wrap, the contract that the gate uses, the arithmetic of each Poly1305
+    step. ⏭ Not yet proved: Poly1305 over a whole message, any statement about the Salsa20/12
+    output, constant time
+- module: "LZ4 block decoder (a controller always compresses the configuration)"
+  file: "`src/lz4.c`"
+  state: >-
+    ✅ proved with WP for every input: no access outside either buffer, no wrap, every loop ends;
+    same bytes as the reference on 58 blocks made by the reference
+- module: "Dictionary reader (configuration format)"
+  file: "`src/dict.c`"
+  state: >-
+    ✅ proved with WP for memory safety; same answers as the reference reader on 198 dictionaries
+- module: >-
+    Protocol messages: HELLO, OK, ECHO, configuration request and reply, certificate push, multicast
+    subscription, frames both ways, sends in two datagrams
+  file: "`src/leaf.c`, `include/ztl/leaf.h`"
+  state: >-
+    ✅ proved with WP, every function: memory safety, no arithmetic wrap, every loop ends, the data
+    invariant of the node, authentication before effects for the whole leaf, one packet ID for each
+    packet, bounds on every frame and packet. ✅ exchanges frames with the reference node on a host
+    (loopback test); protocol test with known answers and random authentic packets under sanitizers.
+    ⏭ Not proved, tested only: what the messages mean, when the timers fire
+- module: "Provisioning (pairwise keys from the identities, with the reference code)"
+  file: "`tools/provision/`"
+  state: >-
+    ✅ used by the loopback test. The key agreement is the reference's code: a trusted component, not
+    proved
+- module: "Zephyr adapter (virtual Ethernet interface, one thread, no heap)"
+  file: "`zephyr/`"
+  state: >-
+    ⏭ runs on the Teensy 4.1 (first run 2026-11-13: member of a network with a stock controller and
+    stock peers; ping, Telnet and SSH sessions); no proof, no test of its own, no soak
+```
 
-Deliberate errors (mutation step): 98 errors in 104 tool runs, every one rejected by the tool that should see it. Measured in a firmware build for the Cortex-M7: code of the leaf 7,525 bytes, Zephyr adapter 2,076 bytes; RAM of the leaf 7,136 bytes (`struct ztl_leaf`), of the whole Zephyr module 15.8 KB with its thread stack and three packet buffers. The reference solution adds about 110 KB of RAM and 400 KB of code.
+Deliberate errors (mutation step): 102 errors in 114 tool runs, every one rejected by the tool that should see it. Measured in a firmware build for the Cortex-M7: code of the leaf 7,694 bytes, Zephyr adapter 2,100 bytes; RAM of the leaf 7,136 bytes (`struct ztl_leaf`), of the whole Zephyr module 15.8 KB with its thread stack and three packet buffers. The reference solution adds about 110 KB of RAM and 400 KB of code.
 
 "Proved" here means: the code meets its written contract, for the tools' model of C. It does not mean that the contract is the right one, that the compiler is correct, or anything about timing. [reports/PROOFS.md](reports/PROOFS.md) lists every check and proof attempted, in plain words, with what each one does not show, and the attempts that failed.
 
@@ -41,7 +95,7 @@ Deliberate errors (mutation step): 98 errors in 104 tool runs, every one rejecte
 ## Check
 
 ```sh
-proofs/on-remote.sh start          # all steps: CBMC (64- and 32-bit model, reachability), Eva, WP (both models), target build, test vectors, protocol test
+proofs/on-remote.sh start          # all steps: CBMC (64- and 32-bit model, reachability), Eva, WP (both models, then a search for contradictory contracts and unreachable code), target build, test vectors, protocol test
 proofs/on-remote.sh start mutate   # deliberate errors in the code; each must be rejected
 proofs/on-remote.sh wait           # wait for the end, copy results back; exit status 0 = all pass
 proofs/on-remote.sh status | stop | fetch
@@ -67,7 +121,7 @@ The test vectors in `tests/vectors/reference.txt` come from the reference implem
 ## Rules for the code
 
 - No `malloc`, no recursion, no variable-length arrays, no C library calls; every loop has a constant bound.
-- Every function that reads network input takes `(pointer, length)` and has a CBMC harness in `proofs/`.
+- Every function that reads network input takes `(pointer, length)` and has a contract that WP proves; the classifier, the reassembly and the receive gate also have a CBMC harness in `proofs/`.
 - No arithmetic wraps: every sum, product and conversion is proved to stay in its type; a result modulo 2^32 is written with `%`. No `#pragma` that switches a check off.
 - Interfaces carry the annotations of `include/ztl/annot.h` and, where a deductive proof is intended, an ACSL contract.
 - Sizes are constants in headers; RAM is the sum of static objects.

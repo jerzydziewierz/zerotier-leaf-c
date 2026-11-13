@@ -1,10 +1,10 @@
 # Checks and proofs attempted
 
-State: 2026-11-13, after two rounds of independent review of the receive path and the cryptography; the protocol layer (last section of attempts) had one review round by two models, read only, with no run of any tool. This report lists every check and proof that was tried on the C leaf, in plain words: what was asked, which tool answered, the result, and what the result does not show. No prover runs on the workstation. Run them on another host with `proofs/on-remote.sh start` then `proofs/on-remote.sh wait` (a few minutes), and `proofs/on-remote.sh start mutate` for the deliberate errors; exit status 0 of `wait` means every tool ran and reported the expected result. The large CBMC harnesses run one per unit with `proofs/remote.sh`. Every change that made a contract or a check stronger is listed, with the wrong program it would have accepted before, in the project workspace (`dev-docs/improvements-applied.md`).
+State: 2026-11-13, after two rounds of independent review of the receive path and the cryptography; the protocol layer (last section of attempts) had one review round by two models, read only, with no run of any tool, before it got its contracts. This report lists every check and proof that was tried on the C leaf, in plain words: what was asked, which tool answered, the result, and what the result does not show. No prover runs on the workstation. Run them on another host with `proofs/on-remote.sh start` then `proofs/on-remote.sh wait` (a few minutes), and `proofs/on-remote.sh start mutate` for the deliberate errors; exit status 0 of `wait` means every tool ran and reported the expected result. The large CBMC harnesses run one per unit with `proofs/remote.sh`. The chapter [List of proofs](#list-of-proofs) is the short form: every statement that a tool proves, with its number. Every change that made a contract or a check stronger is listed, with the wrong program it would have accepted before, in the project workspace (`dev-docs/improvements-applied.md`).
 
 ## What is under test
 
-Nine source files. Six are the receive path up to an authenticated and decrypted packet: the classifier `ztl_classify()` (`src/wire.c`), the reassembly `ztl_reasm_input()` (`src/reasm.c`), the receive gate `ztl_rx()` (`src/rx.c`), and behind the gate the cryptography: Salsa20/12 (`src/salsa.c`), Poly1305 (`src/poly.c`) and their composition `ztl_auth_open()` / `ztl_auth_seal()` (`src/auth.c`). Together 3,090 bytes of code on the Cortex-M7 at `-Os`, 4,440 bytes of RAM (`struct ztl_node`), at most 456 bytes of stack on the receive path, no call into a C library. Three more are the protocol layer on top of that gate: the LZ4 decoder (`src/lz4.c`), the dictionary reader (`src/dict.c`) and the messages and timers (`src/leaf.c`); 4,423 bytes of code more, 7,136 bytes of RAM for the whole leaf (`struct ztl_leaf`). The sections below take them one at a time.
+Nine source files. Six are the receive path up to an authenticated and decrypted packet: the classifier `ztl_classify()` (`src/wire.c`), the reassembly `ztl_reasm_input()` (`src/reasm.c`), the receive gate `ztl_rx()` (`src/rx.c`), and behind the gate the cryptography: Salsa20/12 (`src/salsa.c`), Poly1305 (`src/poly.c`) and their composition `ztl_auth_open()` / `ztl_auth_seal()` (`src/auth.c`). Together 3,076 bytes of code on the Cortex-M7 at `-Os`, 4,440 bytes of RAM (`struct ztl_node`), at most 456 bytes of stack on the receive path, no call into a C library. Three more are the protocol layer on top of that gate: the LZ4 decoder (`src/lz4.c`), the dictionary reader (`src/dict.c`) and the messages and timers (`src/leaf.c`); 4,612 bytes of code more, 7,136 bytes of RAM for the whole leaf (`struct ztl_leaf`). The sections below take them one at a time.
 
 The classifier (196 bytes of code, 32 bytes of stack) receives the payload of one UDP datagram from the network, a pointer and a length, and decides one of three things:
 
@@ -16,26 +16,294 @@ For a head or a fragment it fills a small record (`struct ztl_view`) with the pa
 
 ## Three kinds of tool
 
-| Tool | How it works, in one sentence | Strength | Weakness |
-|---|---|---|---|
-| **CBMC** (bounded model checker) | It turns the program and "any input up to this size" into one large logic formula and asks a solver for an input that breaks a check. | Exact within the bound; handles bit operations with ease; gives a counterexample. | Says nothing beyond the bound. |
-| **Frama-C Eva** (abstract interpretation) | It runs the program on sets of values instead of single values. | Never misses a run-time error on the paths it analyses; no annotations needed. | Can raise false alarms; cannot decide properties that depend on unknown input bytes. |
-| **Frama-C WP** (deductive proof) | It turns the code and a written contract into logic formulas ("goals") and gives each to automatic provers. | No bound and no approximation: holds for every input. | Needs a written contract; provers are weak on bit operations. |
+```yaml
+- tool: "CBMC (bounded model checker)"
+  how_it_works: >-
+    It turns the program and "any input up to this size" into one large logic formula and asks a
+    solver for an input that breaks a check.
+  strength: "Exact within the bound; handles bit operations with ease; gives a counterexample."
+  weakness: "Says nothing beyond the bound."
+- tool: "Frama-C Eva (abstract interpretation)"
+  how_it_works: "It runs the program on sets of values instead of single values."
+  strength: "Never misses a run-time error on the paths it analyses; no annotations needed."
+  weakness: "Can raise false alarms; cannot decide properties that depend on unknown input bytes."
+- tool: "Frama-C WP (deductive proof)"
+  how_it_works: >-
+    It turns the code and a written contract into logic formulas ("goals") and gives each to
+    automatic provers.
+  strength: "No bound and no approximation: holds for every input."
+  weakness: "Needs a written contract; provers are weak on bit operations."
+```
 
 A "contract" states what must be true before the call (the buffer is readable for `len` bytes, the record is writable, the two do not overlap) and what is true after it (the three rules above and the exact value of each field). It is in `include/ztl/wire.h`.
 
+## List of proofs
+
+Every statement below is proved by a tool for every input that its contract allows, at the full packet size of 2,048 bytes unless a size is named. "WP" is Frama-C WP with the provers Alt-Ergo, Z3 and CVC5, in a 64-bit and a 32-bit data model, with the checks for run-time errors, unsigned wrap and lossy conversion switched on: 3,971 goals in the 64-bit model and 3,976 in the 32-bit model, all proved. Each part names the chapter of this report with the details and the limits: [classifier](#attempts-on-the-classifier), [reassembly](#attempts-on-reassembly), [receive gate](#attempts-on-the-receive-gate), [cryptography](#attempts-on-the-cryptography), [protocol layer](#attempts-on-the-protocol-layer). What is NOT proved is in the chapter [What all of this does not show](#what-all-of-this-does-not-show).
+
+```yaml
+- part: "Every function in src/ (nine source files, the whole leaf)"
+  chapter: "all chapters of attempts below"
+  proved:
+    - id: L-1
+      statement: >-
+        No run-time error: no division by zero, no shift out of range, no signed overflow, no
+        invalid pointer use
+      tool: "WP"
+    - id: L-2
+      statement: "No read outside the memory that the contract names"
+      tool: "WP"
+    - id: L-3
+      statement: >-
+        No write outside the memory that the contract names; each contract lists what the function
+        may change, and nothing else changes
+      tool: "WP"
+    - id: L-4
+      statement: >-
+        Every loop ends (each of the 34 loops has a proved bound) and no function calls itself:
+        every call returns
+      tool: "WP (loop variants); no recursion in the code"
+    - id: L-5
+      statement: "No unsigned sum or product wraps; no conversion to a narrower type loses bits"
+      tool: "WP"
+    - id: L-6
+      statement: >-
+        What a function returns meets its written contract, so its caller is proved from the
+        contract alone
+      tool: "WP"
+- part: "Datagram classifier (src/wire.c)"
+  chapter: "#attempts-on-the-classifier"
+  proved:
+    - id: L-7
+      statement: >-
+        The answer (head, fragment, drop) follows the exact written rule in both directions; the
+        three cases cover every input and never overlap; every field of the result has its exact
+        value; on drop nothing is written
+      tool: >-
+        WP 165 goals; CBMC for every buffer of 0 to 2,049 bytes, 506 checks (507 in the 32-bit
+        model)
+    - id: L-8
+      statement: >-
+        The rule equals a model of the reference receive path, with two listed differences (packets
+        that need AES)
+      tool: "CBMC"
+    - id: L-9
+      statement: "Each of the 11 kinds of outcome can happen in the harness"
+      tool: "CBMC reachability"
+- part: "Reassembly (src/reasm.c)"
+  chapter: "#attempts-on-reassembly"
+  proved:
+    - id: L-10
+      statement: >-
+        Head then fragment, and fragment then head, both give the head bytes followed by the
+        fragment bytes; a total above 2,048 bytes gives nothing
+      tool: "WP 293 + 44 goals; CBMC at 64-byte packets"
+    - id: L-11
+      statement: >-
+        Slot rule: a part older than 5 s does not count (32-bit clock that wraps); the first waiting
+        slot of this packet is used; a waiting packet is given up only when every slot holds one,
+        and then the oldest
+      tool: "WP; CBMC at 64-byte packets"
+    - id: L-12
+      statement: >-
+        The reassembly memory is valid after every call; a returned packet is the datagram itself or
+        one freed slot
+      tool: "WP; CBMC at 64-byte packets (induction over call sequences)"
+- part: "Receive gate (src/rx.c)"
+  chapter: "#attempts-on-the-receive-gate"
+  proved:
+    - id: L-13
+      statement: >-
+        Authentication before effects: a packet is delivered only after exactly one call of the
+        authentication primitive that answered yes, with the key of a pinned peer whose address is
+        the packet's source, for a packet addressed to this node; a yes is never thrown away
+      tool: "WP 189 goals; CBMC at 40-byte packets"
+    - id: L-14
+      statement: >-
+        An unencrypted packet reaches the primitive, and is delivered, only if its verb is HELLO
+      tool: "WP; CBMC"
+    - id: L-15
+      statement: >-
+        Without delivery the output is untouched and at most one refusal counter grows by one; the
+        own address and the peer table are never written
+      tool: "WP; CBMC"
+    - id: L-16
+      statement: >-
+        The delivered body is the rest of exactly the packet that was authenticated, and lies in the
+        datagram or in the node's reassembly memory
+      tool: "WP"
+- part: "Packet authentication and encryption (src/auth.c, src/salsa.c, src/poly.c)"
+  chapter: "#attempts-on-the-cryptography"
+  proved:
+    - id: L-17
+      statement: >-
+        ztl_auth_open() writes only the bytes from the verb byte onward; after the answer no, or
+        without decryption, the packet is unchanged
+      tool: "WP 248 goals"
+    - id: L-18
+      statement: >-
+        Poly1305: the five limbs stay inside their limits for a message of any length, so no
+        product, sum or carry leaves its type
+      tool: "WP 572 goals; CBMC induction step, 1,720 checks"
+    - id: L-19
+      statement: >-
+        Poly1305, each step as a statement about numbers: bytes to limbs; add a block; multiply
+        (exactly h times r minus a named multiple of 2^130 - 5); final reduction to the tag bytes
+      tool: "WP; the identity also checked by computer algebra"
+    - id: L-20
+      statement: >-
+        The comparison of the MAC answers 1 exactly when all bytes are equal; the wipe functions
+        write zeros
+      tool: "WP"
+- part: "Protocol layer (src/lz4.c, src/dict.c, src/leaf.c)"
+  chapter: "#attempts-on-the-protocol-layer"
+  proved:
+    - id: L-21
+      statement: >-
+        LZ4 decoder: for every block and every output size, no access outside the block or the
+        output, and no match that copies from before the start of the output
+      tool: "WP 133 goals"
+    - id: L-22
+      statement: >-
+        Dictionary reader: for every dictionary and key, no access outside the dictionary, the key
+        or the value buffer
+      tool: "WP 267 goals"
+    - id: L-23
+      statement: >-
+        Authentication before effects for the whole leaf: ztl_input() gives a reply packet or a
+        frame only after the receive gate made exactly one call of the authentication primitive and
+        it answered yes
+      tool: "WP (part of the 1,779 goals of src/leaf.c)"
+    - id: L-24
+      statement: >-
+        After the start (ztl_init(), ztl_pin()) no call writes the node's own address, the table of
+        pinned peers and their keys, the public key, the network ID or the controller index: they
+        are in no list of what ztl_input(), ztl_poll() or ztl_frame_to() may change
+      tool: "WP"
+    - id: L-25
+      statement: >-
+        One packet ID (the encryption nonce) for each packet: every call that builds a packet moves
+        the counter by exactly one, and a call that builds none leaves it
+      tool: "WP"
+    - id: L-26
+      statement: >-
+        What leaves the leaf is bounded: a delivered frame has 1 to 1,500 bytes and is readable for
+        its whole length; a reply has 28 to 2,048 bytes; a periodic packet has 28 to 1,432 bytes
+      tool: "WP"
+    - id: L-27
+      statement: >-
+        A frame from the host goes out only with a configuration, to a pinned peer that was heard,
+        with 1 to MTU bytes
+      tool: "WP"
+    - id: L-28
+      statement: >-
+        The data invariant of the node (valid reassembly memory, certificate length within its
+        buffer, controller index in range, MTU 1,280 to 1,500 while a configuration is in use) holds
+        after start and after every call
+      tool: "WP"
+    - id: L-29
+      statement: >-
+        The second datagram of a long packet is a 16-byte header with the packet ID and the
+        destination, then exactly the bytes that the first datagram did not carry; both fit 1,432
+        bytes
+      tool: "WP"
+```
+
+Each proof holds under these assumptions: the caller meets the stated preconditions (valid, separate buffers); the tools' model of C (no notion of reading memory that was never written; pointer alignment not checked); the compiler and the hardware are correct. The contracts are written by hand: 102 deliberate errors in the code (114 tool runs), each rejected by the tool named for it, are the guard against contracts that say too little (A-6, B-6, C-4, D-9, E-7).
+
 ## Attempts on the classifier
 
-| ID | What was asked | Tool | Result | What it does not show |
-|---|---|---|---|---|
-| A-1 | For every buffer of every length 0 to 2049 bytes, with any contents: does the function ever read outside the buffer, write outside the record, overflow an integer, shift by an illegal amount, or convert a value with loss? The buffer is allocated with exactly `len` bytes, so one byte too far is an error. | CBMC 5.95.1 | ✅ 490 automatic checks, 0 failed (pointer dereferences, pointer calculations, overflows, shifts, allocation). With the 16 assertions of A-2 the tool reports 506 in total. | Lengths above 2049 (WP covers them). Callers that pass a bad pointer. Kinds of undefined behaviour that CBMC has no check for. This run uses the host's 64-bit data model; A-5b repeats it with 32 bits. |
-| A-2 | For the same inputs: is the answer exactly what the reference would do, in both directions? The harness holds a model of the reference receive path, written line by line from `Switch.cpp`, `IncomingPacket.cpp` and `Packet.cpp` in the reference's own form. The leaf must accept exactly the datagrams that the reference would go on to authenticate without AES, and must drop the two listed differences (AES-GMAC-SIV packets, extended-armor packets). Also: packet number = first 8 bytes, most significant first; each pointer at its exact offset; payload ends at the buffer end and is not empty; cipher and "more parts follow" flag decoded right; after a drop the record is unchanged. | CBMC | ✅ 16 assertions, 0 failed. | The model is still a reading of the reference source, not the reference itself; a run of both programs on the same inputs is the stronger check (V-21). Address checks (to this node, not from this node) are not in the classifier. |
-| A-3 | Can each outcome really happen in the harness? (If "head" could never occur, A-2 would pass without meaning anything.) Eleven targets: drop at length 0 and 2049; head at 28 and 2048; head with suite 0; head with suite 1 and bit 7; fragment at 17 and 2048; drop of an empty fragment, of an extended-armor head and of an AES-GMAC-SIV head. | CBMC `--cover` | ✅ 11 of 11 reached. | This is "each target can happen", not branch coverage. |
-| A-4 | Can any run-time error occur, and does the call meet the contract's preconditions? Unknown contents, length 0 to 2049. | Frama-C 33.0 Eva | ✅ 0 run-time alarms; 7 preconditions and 1 assertion valid; all 61 statements of the 3 analysed functions reached. | The three outcome rules: Eva cannot decide which rule applies to unknown bytes. Its log has 18 "postcondition ... behaviour may be inactive" warnings for them; these are not evaluated and the runner ignores exactly this kind of warning. Reads between `len` and the end of its fixed 2049-byte array. |
-| A-5 | Does the code meet the full contract for every length and every content, with no bound? This includes: exact rule for each outcome, exact value of every field (the packet number too, since it is computed as plain arithmetic), nothing written on a drop, the three rules cover every input and never overlap, no run-time error, and no unsigned sum or product that wraps (D-2 explains this stricter setting). | Frama-C 33.0 WP with Alt-Ergo 2.6.4, CVC5 1.1.2, Z3 4.8.12 | ✅ 165 of 165 goals proved. | Pointer alignment: WP skips this check, so the proof assumes that the caller passes a correctly aligned record. The proof is about the C source, not about the compiled machine code. It assumes the caller meets the preconditions. |
-| A-5b | Do A-1, A-2 and A-5 still hold when `size_t` and pointers are 32 bits wide, as on the target? | CBMC `--arch arm` on sources preprocessed by the target compiler; WP `-machdep gcc_x86_32` | ✅ 507 checks, 0 failed (includes the target layout assertion); 165 of 165 goals. | WP's 32-bit model is x86, not ARM, so its struct layout can differ. |
-| A-6 | Do the proofs fail when the code is wrong? Ten deliberate errors, one at a time: head one byte too short; packet number with its halves swapped; packet number with its bytes reversed; always "drop"; record written and then "drop"; payload pointer one byte too far; empty fragment accepted; extended-armor head accepted; suite 1 with bit 7 refused; suite 3 accepted. | `proofs/run.sh mutate` (CBMC, cover, WP) | ✅ 10 of 10 rejected. | Only ten errors. Errors in the contract or in the harness itself are not injected. |
-| A-7 | Does the code compile for the target without warnings, and how much code and stack does it use? | GCC 14.3 for Cortex-M7, `-Wall -Wextra -Wpedantic -Werror -fstack-usage` (`proofs/run.sh target`) | ✅ No warnings; 196 bytes of code, 32 bytes of stack, static. | Stack of the whole program (only one function exists). |
+```yaml
+- id: A-1
+  asked: >-
+    For every buffer of every length 0 to 2049 bytes, with any contents: does the function ever read
+    outside the buffer, write outside the record, overflow an integer, shift by an illegal amount,
+    or convert a value with loss? The buffer is allocated with exactly `len` bytes, so one byte too
+    far is an error.
+  tool: "CBMC 5.95.1"
+  result: >-
+    ✅ 490 automatic checks, 0 failed (pointer dereferences, pointer calculations, overflows, shifts,
+    allocation). With the 16 assertions of A-2 the tool reports 506 in total.
+  does_not_show: >-
+    Lengths above 2049 (WP covers them). Callers that pass a bad pointer. Kinds of undefined
+    behaviour that CBMC has no check for. This run uses the host's 64-bit data model; A-5b repeats
+    it with 32 bits.
+- id: A-2
+  asked: >-
+    For the same inputs: is the answer exactly what the reference would do, in both directions? The
+    harness holds a model of the reference receive path, written line by line from `Switch.cpp`,
+    `IncomingPacket.cpp` and `Packet.cpp` in the reference's own form. The leaf must accept exactly
+    the datagrams that the reference would go on to authenticate without AES, and must drop the two
+    listed differences (AES-GMAC-SIV packets, extended-armor packets). Also: packet number = first 8
+    bytes, most significant first; each pointer at its exact offset; payload ends at the buffer end
+    and is not empty; cipher and "more parts follow" flag decoded right; after a drop the record is
+    unchanged.
+  tool: "CBMC"
+  result: "✅ 16 assertions, 0 failed."
+  does_not_show: >-
+    The model is still a reading of the reference source, not the reference itself; a run of both
+    programs on the same inputs is the stronger check (V-21). Address checks (to this node, not from
+    this node) are not in the classifier.
+- id: A-3
+  asked: >-
+    Can each outcome really happen in the harness? (If "head" could never occur, A-2 would pass
+    without meaning anything.) Eleven targets: drop at length 0 and 2049; head at 28 and 2048; head
+    with suite 0; head with suite 1 and bit 7; fragment at 17 and 2048; drop of an empty fragment,
+    of an extended-armor head and of an AES-GMAC-SIV head.
+  tool: "CBMC `--cover`"
+  result: "✅ 11 of 11 reached."
+  does_not_show: "This is \"each target can happen\", not branch coverage."
+- id: A-4
+  asked: >-
+    Can any run-time error occur, and does the call meet the contract's preconditions? Unknown
+    contents, length 0 to 2049.
+  tool: "Frama-C 33.0 Eva"
+  result: >-
+    ✅ 0 run-time alarms; 7 preconditions and 1 assertion valid; all 61 statements of the 3 analysed
+    functions reached.
+  does_not_show: >-
+    The three outcome rules: Eva cannot decide which rule applies to unknown bytes. Its log has 18
+    "postcondition ... behaviour may be inactive" warnings for them; these are not evaluated and the
+    runner ignores exactly this kind of warning. Reads between `len` and the end of its fixed
+    2049-byte array.
+- id: A-5
+  asked: >-
+    Does the code meet the full contract for every length and every content, with no bound? This
+    includes: exact rule for each outcome, exact value of every field (the packet number too, since
+    it is computed as plain arithmetic), nothing written on a drop, the three rules cover every
+    input and never overlap, no run-time error, and no unsigned sum or product that wraps (D-2
+    explains this stricter setting).
+  tool: "Frama-C 33.0 WP with Alt-Ergo 2.6.4, CVC5 1.1.2, Z3 4.8.12"
+  result: "✅ 165 of 165 goals proved."
+  does_not_show: >-
+    Pointer alignment: WP skips this check, so the proof assumes that the caller passes a correctly
+    aligned record. The proof is about the C source, not about the compiled machine code. It assumes
+    the caller meets the preconditions.
+- id: A-5b
+  asked: >-
+    Do A-1, A-2 and A-5 still hold when `size_t` and pointers are 32 bits wide, as on the target?
+  tool: "CBMC `--arch arm` on sources preprocessed by the target compiler; WP `-machdep gcc_x86_32`"
+  result: "✅ 507 checks, 0 failed (includes the target layout assertion); 165 of 165 goals."
+  does_not_show: "WP's 32-bit model is x86, not ARM, so its struct layout can differ."
+- id: A-6
+  asked: >-
+    Do the proofs fail when the code is wrong? Ten deliberate errors, one at a time: head one byte
+    too short; packet number with its halves swapped; packet number with its bytes reversed; always
+    "drop"; record written and then "drop"; payload pointer one byte too far; empty fragment
+    accepted; extended-armor head accepted; suite 1 with bit 7 refused; suite 3 accepted.
+  tool: "`proofs/run.sh mutate` (CBMC, cover, WP)"
+  result: "✅ 10 of 10 rejected."
+  does_not_show: >-
+    Only ten errors. Errors in the contract or in the harness itself are not injected.
+- id: A-7
+  asked: >-
+    Does the code compile for the target without warnings, and how much code and stack does it use?
+  tool: >-
+    GCC 14.3 for Cortex-M7, `-Wall -Wextra -Wpedantic -Werror -fstack-usage` (`proofs/run.sh
+    target`)
+  result: "✅ No warnings; 196 bytes of code, 32 bytes of stack, static."
+  does_not_show: "Stack of the whole program (only one function exists)."
+```
 
 Which tool caught which error (first five errors, measured once by hand before `mutate` existed): CBMC caught all five. WP caught four; it missed the byte-order error because the contract leaves the packet number's value to CBMC. Eva caught none, because none is a run-time error in its fixed-size array; its job here is the absence of crashes.
 
@@ -45,25 +313,131 @@ Which tool caught which error (first five errors, measured once by hand before `
 
 The module is built from small functions, each with its own contract (`src/reasm_internal.h`): copy bytes; move bytes down inside one buffer; choose a slot; put a head into a slot; put a fragment into a slot. **Each function is proved against its contract alone, and a caller is proved with the contracts of what it calls, not with their code.** That is why these proofs hold at the full 2048-byte size and take seconds: the provers never follow a copy byte by byte, they use "after the call, byte j of the destination equals the old byte j of the source".
 
-| ID | What was asked | Tool | Result | What it does not show |
-|---|---|---|---|---|
-| B-1 | Does every function of the module meet its contract, for every input that the contract allows, at the full packet size, with no run-time error? The contracts say, for example: the copy changes only the destination and makes it equal to the source; the chosen slot waits for this packet number or is free; after "put head" the slot holds exactly the head bytes, and if a fragment was waiting, the fragment bytes now follow the head. Also: the validity rule for the reassembly memory holds after every call, and a returned packet is readable for its whole length. The slot choice states its whole rule: a part older than 5 s (on a 32-bit clock that wraps) does not count as waiting; the first waiting slot with this packet number is the result and no waiting packet is lost; without a match the result is free, and a waiting packet is given up only when every slot holds one, and then the oldest. | Frama-C 33.0 WP (64-bit and 32-bit model) | ✅ 293 of 293 goals in each model. | `ztl_reasm_input()` does not yet repeat the timeout rule in its own contract (its callers see "the result is the datagram or one freed slot"). Reads of memory that was never written: WP has no such notion (F-24). Alignment of the caller's pointers (WP skips that check). |
-| B-2 | Head then fragment, and fragment then head: do both give exactly the head bytes followed by the fragment payload when the total fits, and nothing when it does not? Written as two five-line functions (`proofs/reasm_wp.c`) and proved from the contracts of "put head" and "put fragment" alone. | Frama-C WP, full size | ✅ 44 of 44 goals in each model. | Other packets arriving in between (they use other slots; B-1 shows that a slot function changes only its own slot). |
-| B-3 | Independent cross-check with a different method: take ANY valid reassembly memory, give it any one classified datagram at any clock value. Any memory or arithmetic error? Memory valid again? Returned packet exactly the datagram or one freed slot? (Induction: covers input sequences of every length.) | CBMC, packet size set to 64 bytes | ✅ 572 checks, 0 failed (current code, CBMC 6.6.0). | The full packet size: with 2048 bytes CBMC's SAT formula does not fit (F-15). CBMC shares no contract text with WP, so it would catch a wrong contract. |
-| B-4 | Same cross-check for: both arrival orders byte for byte; a second head or second fragment ignored; parts further apart than the timeout never joined, for every value of the 32-bit clock including its wrap-around. | CBMC 6.6.0, 64-byte packets | ✅ 640, 629 and 570 checks, 0 failed (current code). | As B-3. A device that makes no call for more than 2^31 ms (about 25 days); stated as a rule for the caller. |
-| B-5 | Does the module compile for the target without warnings and without any call into a C library, within its RAM budget? | Target build | ✅ | — |
-| B-6 | Do the proofs fail when the reassembly code is wrong? Eleven deliberate errors: total may exceed the limit by one; payload moved from the wrong place; last head byte not copied; fragment stored one byte too far; copy loop stops one byte early; slot kept after a join; validity check accepts an empty fragment; timeout never applied; a part of exactly the timeout age dropped; the newest packet replaced instead of the oldest; clock difference without the wrap. | Mutation step (WP) | ✅ 11 of 11 rejected. | Only eleven errors. |
+```yaml
+- id: B-1
+  asked: >-
+    Does every function of the module meet its contract, for every input that the contract allows,
+    at the full packet size, with no run-time error? The contracts say, for example: the copy
+    changes only the destination and makes it equal to the source; the chosen slot waits for this
+    packet number or is free; after "put head" the slot holds exactly the head bytes, and if a
+    fragment was waiting, the fragment bytes now follow the head. Also: the validity rule for the
+    reassembly memory holds after every call, and a returned packet is readable for its whole
+    length. The slot choice states its whole rule: a part older than 5 s (on a 32-bit clock that
+    wraps) does not count as waiting; the first waiting slot with this packet number is the result
+    and no waiting packet is lost; without a match the result is free, and a waiting packet is given
+    up only when every slot holds one, and then the oldest.
+  tool: "Frama-C 33.0 WP (64-bit and 32-bit model)"
+  result: "✅ 293 of 293 goals in each model."
+  does_not_show: >-
+    `ztl_reasm_input()` does not yet repeat the timeout rule in its own contract (its callers see
+    "the result is the datagram or one freed slot"). Reads of memory that was never written: WP has
+    no such notion (F-24). Alignment of the caller's pointers (WP skips that check).
+- id: B-2
+  asked: >-
+    Head then fragment, and fragment then head: do both give exactly the head bytes followed by the
+    fragment payload when the total fits, and nothing when it does not? Written as two five-line
+    functions (`proofs/reasm_wp.c`) and proved from the contracts of "put head" and "put fragment"
+    alone.
+  tool: "Frama-C WP, full size"
+  result: "✅ 44 of 44 goals in each model."
+  does_not_show: >-
+    Other packets arriving in between (they use other slots; B-1 shows that a slot function changes
+    only its own slot).
+- id: B-3
+  asked: >-
+    Independent cross-check with a different method: take ANY valid reassembly memory, give it any
+    one classified datagram at any clock value. Any memory or arithmetic error? Memory valid again?
+    Returned packet exactly the datagram or one freed slot? (Induction: covers input sequences of
+    every length.)
+  tool: "CBMC, packet size set to 64 bytes"
+  result: "✅ 572 checks, 0 failed (current code, CBMC 6.6.0)."
+  does_not_show: >-
+    The full packet size: with 2048 bytes CBMC's SAT formula does not fit (F-15). CBMC shares no
+    contract text with WP, so it would catch a wrong contract.
+- id: B-4
+  asked: >-
+    Same cross-check for: both arrival orders byte for byte; a second head or second fragment
+    ignored; parts further apart than the timeout never joined, for every value of the 32-bit clock
+    including its wrap-around.
+  tool: "CBMC 6.6.0, 64-byte packets"
+  result: "✅ 640, 629 and 570 checks, 0 failed (current code)."
+  does_not_show: >-
+    As B-3. A device that makes no call for more than 2^31 ms (about 25 days); stated as a rule for
+    the caller.
+- id: B-5
+  asked: >-
+    Does the module compile for the target without warnings and without any call into a C library,
+    within its RAM budget?
+  tool: "Target build"
+  result: "✅"
+  does_not_show: "—"
+- id: B-6
+  asked: >-
+    Do the proofs fail when the reassembly code is wrong? Eleven deliberate errors: total may exceed
+    the limit by one; payload moved from the wrong place; last head byte not copied; fragment stored
+    one byte too far; copy loop stops one byte early; slot kept after a join; validity check accepts
+    an empty fragment; timeout never applied; a part of exactly the timeout age dropped; the newest
+    packet replaced instead of the oldest; clock difference without the wrap.
+  tool: "Mutation step (WP)"
+  result: "✅ 11 of 11 rejected."
+  does_not_show: "Only eleven errors."
+```
 
 ## Attempts on the receive gate
 
 `ztl_rx()` in `src/rx.c` (96 bytes of stack) is the only way a packet reaches the rest of the node. Order of steps: classify; the datagram must be addressed to this node and must not claim to come from it; reassemble; on the complete packet apply the address rule and the cipher suite rule again, find the source in the table of pinned peers, refuse an unencrypted packet unless it is HELLO, then call the authentication primitive `ztl_auth_open()` with that peer's key. Only a "yes" from the primitive delivers the packet. The gate is proved against the CONTRACT of the primitive, not against its code, so the gate proof does not depend on the cryptography; section "Attempts on the cryptography" shows that the code of the primitive meets that contract.
 
-| ID | What was asked | Tool | Result | What it does not show |
-|---|---|---|---|---|
-| C-1 | "Authentication before effects", as a contract on `ztl_rx()` and proved from the contracts of the classifier, the reassembly and the primitive. For every node state with valid reassembly memory and every datagram: the primitive is called at most once; a packet is delivered only after one call that answered yes; that call used the key of a pinned peer whose address equals the packet's source; the packet is addressed to this node; an unencrypted packet reaches the primitive, and is delivered, only if its verb is HELLO; a yes is never thrown away; the node's own address and the peer table are never written; without delivery the output record is untouched and at most one refusal counter grows, by one; with delivery only the "ok" counter grows; the delivered body is the rest of exactly the packet and length that the primitive was asked about; the mode given to the primitive (decrypt or not) is the one in the packet's flags; the reassembly memory stays valid; no run-time error. | Frama-C WP (64-bit and 32-bit model), full packet size | ✅ 192 of 192 goals in each model. | WHEN the primitive answers yes: its contract says what it may change ("a no changes nothing; a yes may rewrite the encrypted part"), not that a yes means a right MAC. That link is D-1 (test vectors), not a proof. The proof records the call in proof-only variables (ghost state: call count, answer, key, packet, length); they do not exist in the program, and the ghost lines are part of the text that a reader must trust. What the caller does with the delivered packet. |
-| C-2 | Independent cross-check with CBMC and a stand-in primitive that may answer yes or no for any input: the same properties, stated a second time in the harness (`proofs/rx_cbmc.c`). | CBMC, packet size reduced | ✅ At 40-byte packets, current code: 891 checks, 0 failed, after 1 h 52 min of solving (CBMC 5.95.1). Reachability: 8 of 8 outcomes reached. ❗ At 64-byte packets no result: 50-minute limit on prover-host, then 6-hour limit on big-prover-host, still solving. An early run gave one useful failure (F-17). | Packets above 40 bytes: 40 bytes hold a header and 12 payload bytes, so a head and a fragment that join are both near their smallest size. The full size rests on WP (C-1) and the deliberate errors (C-4). |
-| C-3 | Does the gate compile for the target without warnings? | Target build | ✅ 368 bytes of code, 96 bytes of stack. | — |
-| C-4 | Do the proofs fail when the gate is wrong? Seven deliberate errors: unencrypted packet of any verb goes to the primitive; delivery although the primitive said no; key of another peer; address rule not applied to the complete packet; a peer that is not pinned accepted; two counters grow for one refusal; address compare ignores the last byte. | Mutation step (WP) | ✅ 7 of 7 rejected (all modules together, with the cryptography of D-9: 50 errors, 56 tool runs, every one rejected). | Only seven errors. |
+```yaml
+- id: C-1
+  asked: >-
+    "Authentication before effects", as a contract on `ztl_rx()` and proved from the contracts of
+    the classifier, the reassembly and the primitive. For every node state with valid reassembly
+    memory and every datagram: the primitive is called at most once; a packet is delivered only
+    after one call that answered yes; that call used the key of a pinned peer whose address equals
+    the packet's source; the packet is addressed to this node; an unencrypted packet reaches the
+    primitive, and is delivered, only if its verb is HELLO; a yes is never thrown away; the node's
+    own address and the peer table are never written; without delivery the output record is
+    untouched and at most one refusal counter grows, by one; with delivery only the "ok" counter
+    grows; the delivered body is the rest of exactly the packet and length that the primitive was
+    asked about, and it lies in the datagram or in the node's reassembly memory with its 28 header
+    bytes readable before it; the mode given to the primitive (decrypt or not) is the one in the
+    packet's flags; the reassembly memory stays valid; no run-time error.
+  tool: "Frama-C WP (64-bit and 32-bit model), full packet size"
+  result: "✅ 189 of 189 goals in each model."
+  does_not_show: >-
+    WHEN the primitive answers yes: its contract says what it may change ("a no changes nothing; a
+    yes may rewrite the encrypted part"), not that a yes means a right MAC. That link is D-1 (test
+    vectors), not a proof. The proof records the call in proof-only variables (ghost state: call
+    count, answer, key, packet, length); they do not exist in the program, and the ghost lines are
+    part of the text that a reader must trust. What the caller does with the delivered packet.
+- id: C-2
+  asked: >-
+    Independent cross-check with CBMC and a stand-in primitive that may answer yes or no for any
+    input: the same properties, stated a second time in the harness (`proofs/rx_cbmc.c`).
+  tool: "CBMC, packet size reduced"
+  result: >-
+    ✅ At 40-byte packets, current code: 891 checks, 0 failed, after 1 h 52 min of solving (CBMC
+    5.95.1). Reachability: 8 of 8 outcomes reached. ❗ At 64-byte packets no result: 50-minute limit
+    on prover-host, then 6-hour limit on big-prover-host, still solving. An early run gave one useful failure (F-17).
+  does_not_show: >-
+    Packets above 40 bytes: 40 bytes hold a header and 12 payload bytes, so a head and a fragment
+    that join are both near their smallest size. The full size rests on WP (C-1) and the deliberate
+    errors (C-4).
+- id: C-3
+  asked: "Does the gate compile for the target without warnings?"
+  tool: "Target build"
+  result: "✅ 354 bytes of code, 96 bytes of stack."
+  does_not_show: "—"
+- id: C-4
+  asked: >-
+    Do the proofs fail when the gate is wrong? Seven deliberate errors: unencrypted packet of any
+    verb goes to the primitive; delivery although the primitive said no; key of another peer;
+    address rule not applied to the complete packet; a peer that is not pinned accepted; two
+    counters grow for one refusal; address compare ignores the last byte.
+  tool: "Mutation step (WP)"
+  result: "✅ 7 of 7 rejected (all modules together: see E-7)."
+  does_not_show: "Only seven errors."
+```
 
 ## Attempts on the cryptography
 
@@ -71,18 +445,125 @@ The module is built from small functions, each with its own contract (`src/reasm
 
 The code is written in an unusual style, for the provers. There is no intended wrap-around: a sum modulo 2^32 is written `((uint64_t)a + b) % 4294967296`, a rotation as "low bits times 2^c plus high bits", bytes to a word as `p[0] + 256 * p[1] + ...`, and Poly1305 splits numbers with `/` and `%` by powers of two where one would expect shifts and masks. The target compiler emits the same instructions as for the usual style (checked: one `ror` per rotation, `umull` for the 25 products). The provers get plain arithmetic.
 
-| ID | What was asked | Tool | Result | What it does not show |
-|---|---|---|---|---|
-| D-1 | Does the code give the same bytes as the reference? Vectors are made by the reference itself (`tests/oracle/gen_vectors.cpp` calls `Packet::armor()`, `Poly1305::compute()`, `Salsa20::crypt12()`): 125 Poly1305 tags (every length 0 to 80, long messages up to 2,048 bytes, hand-made cases where the sum is at or just above 2^130 − 5 before the last reduction), 28 Salsa20/12 key stream vectors (blocks 0 to 2, and single blocks up to number 1025), 292 whole packets of 28 to 2,048 bytes in both suites. For each packet: seal gives the reference's bytes; open accepts them and gives the plain payload; open refuses, and leaves the packet unchanged, after every one-bit change in the first 64 bytes and in every 7th byte after that (the hop count excepted: relays change it, and open must still accept), with a length shorter by one, and with a key that differs in one bit. | Host test with address and undefined-behaviour sanitizers (`proofs/run.sh vectors`) | ✅ 368,478 checks, 0 failed. | A test, not a proof: only these inputs. The reference was built for a 64-bit host. Peers other than version 1.16.2. |
-| D-2 | For every input that the contracts allow, at the full packet size: no read or write outside the buffers, no run-time error, every loop ends, and **no unsigned sum, product or conversion loses bits** (C allows that; here it is forbidden, so each `+` and `*` needs a proof that the result fits). The function `ztl_auth_open()` meets the contract that the gate proof used: it writes only the bytes from the verb byte onward, and after an answer 0 (or without decryption) those bytes are as before. | Frama-C WP, both data models, `-warn-unsigned-overflow -warn-unsigned-downcast` on all seven units | ✅ 281 + 572 + 248 goals for the three files (all units together: 1,795; 32-bit model 1,794). | When open answers 1 (see C-1). Timing. That each exit path wipes its secrets: WP proves that the wipe functions write zeros, not that they are called. |
-| D-3 | Poly1305, the limbs: can any of the 25 products, any sum of five of them, or any carry leave its type, for a message of any length? The proof is an invariant: before each block the five limbs are below 2^26 (limb 1 below 2^26 + 4096), and one block step keeps that. | WP (part of D-2); CBMC as an independent induction step from ANY limb values inside the limits (`-DH_POLY_STEP`) | ✅ WP proved; CBMC 0 of 1,720 checks failed (CBMC 5.95.1; step `cbmcpoly` of the runner). | — |
-| D-4 | Poly1305, the arithmetic of each step, as statements about numbers: (a) five limbs made from 16 bytes stand for the same number as the bytes; (b) adding a block adds the numbers; (c) the multiplication gives exactly `h · r − (2^130 − 5) · k`, and the contract names k: the part of the product at 2^130 and above plus the last carry; (d) the last step gives tag bytes that stand for `((h mod 2^130 − 5) mod 2^128 + pad) mod 2^128`; a lemma, proved for all numbers, says that this is `(h mod 2^130 − 5 + pad) mod 2^128`, the form in the definition. | WP (part of the 572 goals of `src/poly.c`) | ✅ proved, every length and content. | **The whole function.** No contract says that the loop feeds every block exactly once, that r is clamped as the definition says, or that the last short block is padded right; the step statements are not yet joined into "the tag of this message". Errors there are caught by D-1 only (see D-9). |
-| D-5 | The same arithmetic, asked of a computer algebra system: is the identity behind (c) true as polynomials, and what are the true worst cases? | Wolfram Engine 15.0 (`proofs/poly_identity.wl`), not a proof checker | ✅ The difference expands to 0. Largest sum 2^58.4 (of 64 bits); largest last carry 30.4 bits; limb 1 exceeds 26 bits by at most 101 (the invariant allows 4,096). | It checks the formulas as I typed them into its language, not the C code. Its value is independence: a third method agrees with WP and CBMC. |
-| D-6 | Independent cross-check of Salsa20/12: is `ztl_salsa2012_block()` equal, bit for bit, to a model written in the form of D. J. Bernstein's reference code (the form the reference core uses: sixteen named words, shifts, wrap-around), for every key, IV and block number? | CBMC (`-DH_SALSA`) | ❗ No result: stopped by the 4-hour limit on big-prover-host, still solving. Two forms of the same 12 rounds of add, rotate, XOR are hard for a SAT solver to recognise as equal. 🌱 Next attempt: compare one double round, not the whole function (queued, see "does not show"). | Everything. |
-| D-7 | The same for Poly1305 against a model in the form of poly1305-donna, 32-bit version, for every key and every message of 0 to 33 bytes. | CBMC (`-DH_POLY`) | ❗ No result: stopped by the 4-hour limit on big-prover-host, still solving. 🌱 Next attempt: compare one block step from any limbs inside the limits (queued). | Everything. |
-| D-8 | Seal then open with the same key gives "yes" and the original payload, for every key and every packet of 28 to 96 bytes in both suites. | CBMC (`-DH_ROUNDTRIP`, packet size 96) | ❗ No result: stopped by the 4-hour limit on big-prover-host at 38 GB (limit 40 GB), still solving. | Not a statement about forgery: that a changed packet is refused cannot be proved this way (a MAC can be met by chance, with probability 2^-64 per try). |
-| D-9 | Do the checks fail when the cryptography is wrong? Deliberate errors, each tried with the tool named: see the table below. | Mutation step | ✅ 22 errors, 28 tool runs, every one rejected by the tool named. | Errors that no tool here can see: listed under the table. |
-| D-10 | Does it compile for the target without warnings and without a C library call, and what does the compiled code look like where secrets are handled? | Target build; reading the disassembly | ✅ No warnings, no undefined symbol outside the leaf. The MAC compare has no early exit (subtract, accumulate, one `clz` at the end). The last Poly1305 selection is `mul`/`mla` with 0 or 1, no branch. The wipe loops are present as stores. | Reading is not proof; a new compiler version needs a new reading. Scalar copies of key material in registers and stack slots are not wiped. |
+```yaml
+- id: D-1
+  asked: >-
+    Does the code give the same bytes as the reference? Vectors are made by the reference itself
+    (`tests/oracle/gen_vectors.cpp` calls `Packet::armor()`, `Poly1305::compute()`,
+    `Salsa20::crypt12()`): 125 Poly1305 tags (every length 0 to 80, long messages up to 2,048 bytes,
+    hand-made cases where the sum is at or just above 2^130 − 5 before the last reduction), 28
+    Salsa20/12 key stream vectors (blocks 0 to 2, and single blocks up to number 1025), 292 whole
+    packets of 28 to 2,048 bytes in both suites. For each packet: seal gives the reference's bytes;
+    open accepts them and gives the plain payload; open refuses, and leaves the packet unchanged,
+    after every one-bit change in the first 64 bytes and in every 7th byte after that (the hop count
+    excepted: relays change it, and open must still accept), with a length shorter by one, and with
+    a key that differs in one bit.
+  tool: "Host test with address and undefined-behaviour sanitizers (`proofs/run.sh vectors`)"
+  result: "✅ 0 failed (the step, with the vectors of E-2 and E-4: 369,459 checks)."
+  does_not_show: >-
+    A test, not a proof: only these inputs. The reference was built for a 64-bit host. Peers other
+    than version 1.16.2.
+- id: D-2
+  asked: >-
+    For every input that the contracts allow, at the full packet size: no read or write outside the
+    buffers, no run-time error, every loop ends, and no unsigned sum, product or conversion loses
+    bits (C allows that; here it is forbidden, so each `+` and `*` needs a proof that the result
+    fits). The function `ztl_auth_open()` meets the contract that the gate proof used: it writes
+    only the bytes from the verb byte onward, and after an answer 0 (or without decryption) those
+    bytes are as before.
+  tool: >-
+    Frama-C WP, both data models, `-warn-unsigned-overflow -warn-unsigned-downcast` on all units
+  result: >-
+    ✅ 281 + 572 + 248 goals for the three files (32-bit model: 280 + 572 + 248; all units together:
+    see the list of proofs).
+  does_not_show: >-
+    When open answers 1 (see C-1). Timing. That each exit path wipes its secrets: WP proves that the
+    wipe functions write zeros, not that they are called.
+- id: D-3
+  asked: >-
+    Poly1305, the limbs: can any of the 25 products, any sum of five of them, or any carry leave its
+    type, for a message of any length? The proof is an invariant: before each block the five limbs
+    are below 2^26 (limb 1 below 2^26 + 4096), and one block step keeps that.
+  tool: >-
+    WP (part of D-2); CBMC as an independent induction step from ANY limb values inside the limits
+    (`-DH_POLY_STEP`)
+  result: "✅ WP proved; CBMC 0 of 1,720 checks failed (CBMC 5.95.1; step `cbmcpoly` of the runner)."
+  does_not_show: "—"
+- id: D-4
+  asked: >-
+    Poly1305, the arithmetic of each step, as statements about numbers: (a) five limbs made from 16
+    bytes stand for the same number as the bytes; (b) adding a block adds the numbers; (c) the
+    multiplication gives exactly `h · r − (2^130 − 5) · k`, and the contract names k: the part of
+    the product at 2^130 and above plus the last carry; (d) the last step gives tag bytes that stand
+    for `((h mod 2^130 − 5) mod 2^128 + pad) mod 2^128`; a lemma, proved for all numbers, says that
+    this is `(h mod 2^130 − 5 + pad) mod 2^128`, the form in the definition.
+  tool: "WP (part of the 572 goals of `src/poly.c`)"
+  result: "✅ proved, every length and content."
+  does_not_show: >-
+    The whole function. No contract says that the loop feeds every block exactly once, that r is
+    clamped as the definition says, or that the last short block is padded right; the step
+    statements are not yet joined into "the tag of this message". Errors there are caught by D-1
+    only (see D-9).
+- id: D-5
+  asked: >-
+    The same arithmetic, asked of a computer algebra system: is the identity behind (c) true as
+    polynomials, and what are the true worst cases?
+  tool: "Wolfram Engine 15.0 (`proofs/poly_identity.wl`), not a proof checker"
+  result: >-
+    ✅ The difference expands to 0. Largest sum 2^58.4 (of 64 bits); largest last carry 30.4 bits;
+    limb 1 exceeds 26 bits by at most 101 (the invariant allows 4,096).
+  does_not_show: >-
+    It checks the formulas as I typed them into its language, not the C code. Its value is
+    independence: a third method agrees with WP and CBMC.
+- id: D-6
+  asked: >-
+    Independent cross-check of Salsa20/12: is `ztl_salsa2012_block()` equal, bit for bit, to a model
+    written in the form of D. J. Bernstein's reference code (the form the reference core uses:
+    sixteen named words, shifts, wrap-around), for every key, IV and block number?
+  tool: "CBMC (`-DH_SALSA`)"
+  result: >-
+    ❗ No result: stopped by the 4-hour limit on big-prover-host, still solving. Two forms of the same 12 rounds
+    of add, rotate, XOR are hard for a SAT solver to recognise as equal. 🌱 Next attempt: compare one
+    double round, not the whole function (queued, see "does not show").
+  does_not_show: "Everything."
+- id: D-7
+  asked: >-
+    The same for Poly1305 against a model in the form of poly1305-donna, 32-bit version, for every
+    key and every message of 0 to 33 bytes.
+  tool: "CBMC (`-DH_POLY`)"
+  result: >-
+    ❗ No result: stopped by the 4-hour limit on big-prover-host, still solving. 🌱 Next attempt: compare one
+    block step from any limbs inside the limits (queued).
+  does_not_show: "Everything."
+- id: D-8
+  asked: >-
+    Seal then open with the same key gives "yes" and the original payload, for every key and every
+    packet of 28 to 96 bytes in both suites.
+  tool: "CBMC (`-DH_ROUNDTRIP`, packet size 96)"
+  result: "❗ No result: stopped by the 4-hour limit on big-prover-host at 38 GB (limit 40 GB), still solving."
+  does_not_show: >-
+    Not a statement about forgery: that a changed packet is refused cannot be proved this way (a MAC
+    can be met by chance, with probability 2^-64 per try).
+- id: D-9
+  asked: >-
+    Do the checks fail when the cryptography is wrong? Deliberate errors, each tried with the tool
+    named: see the table below.
+  tool: "Mutation step"
+  result: "✅ 22 errors, 28 tool runs, every one rejected by the tool named."
+  does_not_show: "Errors that no tool here can see: listed under the table."
+- id: D-10
+  asked: >-
+    Does it compile for the target without warnings and without a C library call, and what does the
+    compiled code look like where secrets are handled?
+  tool: "Target build; reading the disassembly"
+  result: >-
+    ✅ No warnings, no undefined symbol outside the leaf. The MAC compare has no early exit
+    (subtract, accumulate, one `clz` at the end). The last Poly1305 selection is `mul`/`mla` with 0
+    or 1, no branch. The wipe loops are present as stores.
+  does_not_show: >-
+    Reading is not proof; a new compiler version needs a new reading. Scalar copies of key material
+    in registers and stack slots are not wiped.
+```
 
 Which tool rejected which deliberate error in the cryptography. "rejected" means that the tool ran and reported the error. "not tried" means that no contract of that tool speaks about the place of the error, so it cannot see it: these rows show where the proofs end and the tests carry the claim alone.
 
@@ -115,68 +596,472 @@ Errors that pass every check here, found by thinking and by review, not by a too
 
 ## Attempts on the protocol layer
 
-`src/leaf.c` (3,917 bytes of code) is everything between the gate and the host: it answers HELLO and ECHO, sends its own HELLO, asks the controller for the network configuration and reads the answer, pushes its certificate of membership, announces its multicast groups, and turns frames into packets and back. It reads only packets that passed the gate, so every input here comes from a pinned peer with a right MAC; the checks below treat such a peer as possibly faulty or hostile all the same. `src/lz4.c` (196 bytes) decodes compressed packets; `src/dict.c` (310 bytes) reads the configuration format. The layer does no input or output: it fills one packet buffer that the caller sends.
+`src/leaf.c` (4,106 bytes of code) is everything between the gate and the host: it answers HELLO and ECHO, sends its own HELLO, asks the controller for the network configuration and reads the answer, pushes its certificate of membership, announces its multicast groups, and turns frames into packets and back. It reads only packets that passed the gate, so every input here comes from a pinned peer with a right MAC; the checks below treat such a peer as possibly faulty or hostile all the same. `src/lz4.c` (196 bytes) decodes compressed packets; `src/dict.c` (310 bytes) reads the configuration format. The layer does no input or output: it fills one packet buffer that the caller sends.
 
-⚠️ The proofs in this section cover the two small decoders. **`src/leaf.c` itself has no contracts yet: its evidence is tests.** That is the order that was chosen: a leaf that talks first, then its proofs.
+The layer was written and tested first (E-5, E-6), then given contracts (E-9). For the proofs the code changed in three ways, with the same behaviour: state flags became separate 0-or-1 bytes in place of bits of one byte; dictionary keys became byte arrays (no pointer casts); the receive gate's contract now says where the delivered packet lies.
 
-| ID | What was asked | Tool | Result | What it does not show |
-|---|---|---|---|---|
-| E-1 | LZ4 decoder, for every block of 0 to 2,048 bytes and every output size up to 2,048: any read outside the block, any write outside the output, any match that copies from before the start of the output, any sum that wraps, any loop that does not end? | Frama-C WP, both data models, strict flags | ✅ 133 of 133 goals. | That the output is what LZ4 means by the block: the contract speaks of memory and limits only (E-2 is the evidence for the bytes). Which blocks are accepted: this decoder refuses a block that ends after a match, as the reference's decoder does, but no check compares the two on malformed blocks. |
-| E-2 | Does the decoder give the reference's bytes? 58 payloads compressed by the reference's own `Packet::compress()`: runs of one byte (matches at offset 1, lengths that need extension bytes), repeated patterns of period 2 to 300 (matches that overlap their own output), configuration-like text with binary values, random bytes with repeated stretches. Each is decoded into a heap block of exactly the plain size; then again with a block one byte smaller, and with the input one byte shorter. | Host test with sanitizers (step `vectors`) | ✅ All 58 equal; every shortened case refused. | Only these inputs. Blocks that a compressor never makes (E-5 feeds random and damaged blocks, but only checks memory and limits). |
-| E-3 | Dictionary reader: any read outside the dictionary or the key, any write outside the value buffer, any loop that does not end, for every dictionary up to 2,048 bytes? | Frama-C WP, both data models | ✅ 267 of 267 goals (first form: 243 of 245, see F-31). | That the value returned is the right one (E-4). |
-| E-4 | Does the reader answer as the reference's reader? 144 lookups in dictionaries made by the reference's writer `Dictionary::add()` (keys that are the start of other keys, values with every byte that needs an escape, absent keys), and 54 lookups in hand-made dictionaries that the writer never makes (carriage return as line end, a line without "=", a key twice, empty values, a zero byte in the middle, a backslash at the end), answered by the reference's reader `Dictionary::get()`. Also: value buffer of the exact size; one byte too small must be refused (the reference cuts the value; the leaf refuses, which is stricter). 24 Ethernet addresses from node address and network ID against `MAC::fromAddress()`. | Host test with sanitizers (step `vectors`) | ✅ 198 + 24, all equal. | Only these inputs. |
-| E-5 | The whole layer with known answers and under hostile input. Part 1, 227 fixed checks: the first packets are one HELLO for each peer and nothing else; HELLO is answered with OK(HELLO) that carries the packet ID, the time stamp and protocol version 11; nothing encrypted goes to a peer that was never heard; an OK counts once and only for the waiting request; a configuration is refused when it comes from a peer that is not the controller, answers another request, is for another node or network, is a public network, has an MTU out of range, a cut certificate or a wrong total length, or (pushed) is not newer; frames are delivered only with a configuration, with 1 to MTU bytes, from the peer's own Ethernet address, to this node or a group; a certificate in front of a frame is skipped by its exact length; the peer's "need certificate" brings the certificate again; frames from the host go to the peer that owns the address, broadcasts to every reachable peer; each packet has the next packet ID; a silent peer gets HELLO only. Part 2, 300,000 random rounds: authentic packets of every verb with random or damaged bodies, compressed or not, whole or in two parts, single flipped bits, random datagrams, random LZ4 blocks, random frames from the host, with time jumps. Each datagram is in a heap block of its exact size. After each call: a reply opens with the peer's key; a delivered frame lies inside the datagram or the leaf; nothing happens for a datagram without a right MAC; a packet sent in two datagrams joins to one that the peer's key opens. | Host test with address and undefined-behaviour sanitizers (step `proto`) | ✅ 1,624,286 checks, 0 failed, no sanitizer report; 183,232 packets passed the gate, 53,855 frames delivered, 4,989 configurations taken, 393 packets sent in two parts. | A test: only these inputs, and the checks I thought of. The expected answers are my reading of the protocol, the same reading as the code (E-6 is the independent check of that reading). |
-| E-6 | Does it talk to the reference? The leaf on one loopback UDP socket, the **reference node** on another: the reference core (protocol version 13, with AES) with a test controller, from the reference solution's host tests. Throw-away identities; the leaf gets its pairwise key from the provisioning tool. Both sides send a fixed IPv4 frame and an ARP request every 200 ms once they are configured, and count what arrives. Cases: frames of 69, 1,280 and 1,500 bytes (1,500 needs two datagrams in both directions); a controller that refuses the leaf; both sides change one bit of every datagram they send. | `tests/host/interop.py` (a test, on the workstation, not in the proof runner) | ✅ Normal cases: both sides configured, 26 frames and 29 ARP requests at the leaf, 27 and 27 at the reference in 6 s, none wrong; the leaf decoded 2 compressed packets (the configuration and the peer's credentials). Refused member: no configuration, no frame. Changed datagrams: no frame on either side. | A stock `zerotier-one` program or a stock controller as the other side: the reference node is the same core built from source, with the patches of the reference solution, and a controller written for the test. Other peer versions. More than one peer. Loss, reordering, delay. In the "changed datagrams" case the reference never answers, so it tests the reference's refusal of the leaf's packets, not the leaf's refusal (D-1 and E-5 test that). |
-| E-7 | Do the checks fail when the new code is wrong? 43 deliberate errors: 8 in the LZ4 decoder (4 for WP, 4 for the vectors), 5 in the dictionary reader, 30 in the protocol layer (among them: packet ID not advanced, HELLO or OK that says protocol version 13, frame delivered without a configuration, from a foreign source, for a third station, longer than the MTU or of another network, configuration from any peer, for another request, taken twice, older, for another node or network, certificate length not checked, "fragmented" flag not set, encrypted packets to a peer that was never heard). | Mutation step | ✅ 43 of 43 rejected by the tool named for each (two partial runs; with the earlier 50 errors: 93 errors, 99 tool runs). One survived at first and two more were reported wrongly: F-29, F-30. | Errors that no check here sees. Known ones: a block that ends after a match accepted (no vector has one); timer values (a HELLO period of 61 s passes); anything in the Zephyr adapter. |
-| E-8 | Does it compile for the target without warnings and without a C library call? Size and stack? | Target build (step `target`); a firmware build with the Zephyr adapter | ✅ `leaf.c` 3,917, `dict.c` 310, `lz4.c` 196 bytes; largest new frame 160 bytes (configuration), `ztl_input()` 88 bytes above the gate. In the firmware build: leaf 7,525 bytes of code in all, adapter 2,076; RAM `struct ztl_leaf` 7,136 bytes, whole Zephyr module 15,799 bytes with a 3 KB thread stack. | The adapter (`zephyr/`) has no test and has not run on a board. |
+```yaml
+- id: E-1
+  asked: >-
+    LZ4 decoder, for every block of 0 to 2,048 bytes and every output size up to 2,048: any read
+    outside the block, any write outside the output, any match that copies from before the start of
+    the output, any sum that wraps, any loop that does not end?
+  tool: "Frama-C WP, both data models, strict flags"
+  result: "✅ 133 of 133 goals."
+  does_not_show: >-
+    That the output is what LZ4 means by the block: the contract speaks of memory and limits only
+    (E-2 is the evidence for the bytes). Which blocks are accepted: this decoder refuses a block
+    that ends after a match, as the reference's decoder does, but no check compares the two on
+    malformed blocks.
+- id: E-2
+  asked: >-
+    Does the decoder give the reference's bytes? 58 payloads compressed by the reference's own
+    `Packet::compress()`: runs of one byte (matches at offset 1, lengths that need extension bytes),
+    repeated patterns of period 2 to 300 (matches that overlap their own output), configuration-like
+    text with binary values, random bytes with repeated stretches. Each is decoded into a heap block
+    of exactly the plain size; then again with a block one byte smaller, and with the input one byte
+    shorter.
+  tool: "Host test with sanitizers (step `vectors`)"
+  result: "✅ All 58 equal; every shortened case refused."
+  does_not_show: >-
+    Only these inputs. Blocks that a compressor never makes (E-5 feeds random and damaged blocks,
+    but only checks memory and limits).
+- id: E-3
+  asked: >-
+    Dictionary reader: any read outside the dictionary or the key, any write outside the value
+    buffer, any loop that does not end, for every dictionary up to 2,048 bytes?
+  tool: "Frama-C WP, both data models"
+  result: "✅ 267 of 267 goals (first form: 243 of 245, see F-31)."
+  does_not_show: "That the value returned is the right one (E-4)."
+- id: E-4
+  asked: >-
+    Does the reader answer as the reference's reader? 144 lookups in dictionaries made by the
+    reference's writer `Dictionary::add()` (keys that are the start of other keys, values with every
+    byte that needs an escape, absent keys), and 54 lookups in hand-made dictionaries that the
+    writer never makes (carriage return as line end, a line without "=", a key twice, empty values,
+    a zero byte in the middle, a backslash at the end), answered by the reference's reader
+    `Dictionary::get()`. Also: value buffer of the exact size; one byte too small must be refused
+    (the reference cuts the value; the leaf refuses, which is stricter). 24 Ethernet addresses from
+    node address and network ID against `MAC::fromAddress()`.
+  tool: "Host test with sanitizers (step `vectors`)"
+  result: "✅ 198 + 24, all equal."
+  does_not_show: "Only these inputs."
+- id: E-5
+  asked: >-
+    The whole layer with known answers and under hostile input. Part 1, 270 fixed checks: the first
+    packets are one HELLO for each peer and nothing else; HELLO is answered with OK(HELLO) that
+    carries the packet ID, the time stamp and protocol version 11; nothing encrypted goes to a peer
+    that was never heard; an OK counts once and only for the waiting request; a configuration is
+    refused when it comes from a peer that is not the controller, answers another request, is for
+    another node or network, is a public network, has an MTU out of range, a cut certificate or a
+    wrong total length, or (pushed) is not newer; frames are delivered only with a configuration,
+    with 1 to MTU bytes, from the peer's own Ethernet address, to this node or a group; a
+    certificate in front of a frame is skipped by its exact length; the peer's "need certificate"
+    brings the certificate again; frames from the host go to the peer that owns the address,
+    broadcasts to every reachable peer; each packet has the next packet ID; a silent peer gets HELLO
+    only. Part 2, 300,000 random rounds: authentic packets of every verb with random or damaged
+    bodies, compressed or not, whole or in two parts, single flipped bits, random datagrams, random
+    LZ4 blocks, random frames from the host, with time jumps. Each datagram is in a heap block of
+    its exact size. After each call: a reply opens with the peer's key; a delivered frame lies
+    inside the datagram or the leaf; nothing happens for a datagram without a right MAC; a packet
+    sent in two datagrams joins to one that the peer's key opens.
+  tool: "Host test with address and undefined-behaviour sanitizers (step `proto`)"
+  result: >-
+    ✅ 1,681,597 checks, 0 failed, no sanitizer report; 183,812 packets passed the gate, 53,841
+    frames delivered, 5,275 configurations taken, 377 packets sent in two parts.
+  does_not_show: >-
+    A test: only these inputs, and the checks I thought of. The expected answers are my reading of
+    the protocol, the same reading as the code (E-6 is the independent check of that reading).
+- id: E-6
+  asked: >-
+    Does it talk to the reference? The leaf on one loopback UDP socket, the reference node on
+    another: the reference core (protocol version 13, with AES) with a test controller, from the
+    reference solution's host tests. Throw-away identities; the leaf gets its pairwise key from the
+    provisioning tool. Both sides send a fixed IPv4 frame and an ARP request every 200 ms once they
+    are configured, and count what arrives. Cases: frames of 69, 1,280 and 1,500 bytes (1,500 needs
+    two datagrams in both directions); a controller that refuses the leaf; both sides change one bit
+    of every datagram they send.
+  tool: "`tests/host/interop.py` (a test, on the workstation, not in the proof runner)"
+  result: >-
+    ✅ All five cases pass on the code of this report. Normal cases (figures of one run): both sides
+    configured, 26 frames and 29 ARP requests at the leaf, 27 and 27 at the reference in 6 s, none
+    wrong; the leaf decoded 2 compressed packets (the configuration and the peer's credentials).
+    Refused member: no configuration, no frame. Changed datagrams: no frame on either side.
+  does_not_show: >-
+    A stock `zerotier-one` program or a stock controller as the other side: the reference node is
+    the same core built from source, with the patches of the reference solution, and a controller
+    written for the test. Other peer versions. More than one peer. Loss, reordering, delay. In the
+    "changed datagrams" case the reference never answers, so it tests the reference's refusal of the
+    leaf's packets, not the leaf's refusal (D-1 and E-5 test that).
+- id: E-7
+  asked: >-
+    Do the checks fail when the new code is wrong? 52 deliberate errors: 8 in the LZ4 decoder (4 for
+    WP, 4 for the vectors), 5 in the dictionary reader, 39 in the protocol layer. Of these 39, 35
+    are for the protocol test (among them: packet ID not advanced, HELLO or OK that says protocol
+    version 13, frame delivered without a configuration, from a foreign source, for a third station,
+    longer than the MTU or of another network, configuration from any peer, for another request,
+    taken twice, older, for another node or network, certificate length not checked, "fragmented"
+    flag not set, encrypted packets to a peer that was never heard) and 10 are for WP (E-9); 6
+    errors are in both groups.
+  tool: "Mutation step"
+  result: >-
+    ✅ 52 of 52 rejected by the tool named for each, in 58 tool runs. The whole list of all chapters,
+    in one run on the code of this report: 102 errors, 114 tool runs, every one rejected. One
+    survived at first and two more were reported wrongly (F-29, F-30); two did not apply for a time
+    (F-35).
+  does_not_show: >-
+    Errors that no check here sees. Known ones: a block that ends after a match accepted (no vector
+    has one); timer values (a HELLO period of 61 s passes); anything in the Zephyr adapter.
+- id: E-8
+  asked: >-
+    Does it compile for the target without warnings and without a C library call? Size and stack?
+  tool: "Target build (step `target`); a firmware build with the Zephyr adapter"
+  result: >-
+    ✅ `leaf.c` 4,106, `dict.c` 310, `lz4.c` 196 bytes; largest new frame 160 bytes (configuration),
+    `ztl_input()` 80 bytes above the gate. In the firmware build: leaf 7,694 bytes of code in all,
+    adapter 2,100 (and 624 for its shell command); RAM `struct ztl_leaf` 7,136 bytes, whole Zephyr
+    module 15,800 bytes with a 3 KB thread stack.
+  does_not_show: >-
+    The adapter (`zephyr/`) has no test of its own; it runs on one board (see "What all of this does
+    not show").
+- id: E-9
+  asked: >-
+    Contracts for every function of `src/leaf.c` (31 functions), a data invariant for the node, and
+    four statements about the whole leaf: (1) `ztl_input()` gives a reply or a frame only after the
+    gate's one call of the authentication primitive answered yes; (2) `ztl_input()` never writes the
+    own address, the pinned peers, their keys, the public key, the network ID or the controller
+    index; (3) each built packet takes exactly one packet ID and a call that builds none takes none;
+    (4) bounds: frame 1 to 1,500 bytes and readable, reply 28 to 2,048 bytes, periodic packet 28 to
+    1,432 bytes. Also: a frame from the host goes out only with a configuration, to a pinned peer
+    that was heard, with 1 to MTU bytes; the second datagram of a long packet is the right header
+    and exactly the rest. And for every function: no run-time error, no access outside the named
+    memory, no wrap, every loop ends.
+  tool: "Frama-C WP, both data models, strict flags"
+  result: >-
+    ✅ 1,779 of 1,779 goals (32-bit model: 1,785 of 1,785). The first run with contracts proved 1,751
+    of 1,759; the rest needed the packet ID statement on three answer functions, the reassembly
+    start contract in the header, and one change of the code (F-34). Ten deliberate errors against
+    these proofs rejected by WP (packet ID not advanced, two IDs for one answer, answer without a
+    yes from the gate, ECHO longer than a packet, certificate length not checked, frame above the
+    MTU, MTU out of range, fragment header without the destination, host frame above the buffer,
+    address list read past its end).
+  does_not_show: >-
+    What the messages mean. No contract says that a HELLO has the right fields, that the timers fire
+    when they should, that a refused configuration is refused: that is E-5, E-6 and E-7 (tests). The
+    statement about frames is "after a yes from the gate", not "this frame was sent by that peer"
+    (the link from yes to a right MAC is D-1, test vectors). Replay: a recorded packet passes the
+    gate again.
+- id: E-10
+  asked: >-
+    Can a contract here prove too much? A function whose preconditions contradict each other, or a
+    call that can never return, makes every statement after it provable. For each function, each
+    call and each statement, WP also tries to prove "false" at that place; a success is a
+    contradiction, or code that no input reaches. All ten units.
+  tool: "Frama-C WP with `-wp-smoke-tests` (step `smoke`, part of the default run)"
+  result: >-
+    ✅ 1,000 such tests, none succeeded. The first run found three, all at one branch of the receive
+    gate that no input reaches (F-36).
+  does_not_show: >-
+    A test that does not succeed means that the provers found no contradiction within a short time
+    limit, not that none exists. That the code under the contracts can run is shown by the tests
+    that reach it (E-5: 183,812 packets through the gate). Contracts that are consistent and say too
+    little: E-7.
+```
 
 ## Related experiment on the reference core (not on this code)
 
-| ID | What was asked | Method | Result | What it does not show |
-|---|---|---|---|---|
-| R-1 | Can a leaf without AES talk to a normal ZeroTier node? The **reference C++ core**, built to announce protocol version 11, never to select AES, and to abort if any AES code is reached, against the unchanged version-13 reference core. | Host interoperability test on loopback (a test, not a proof) | ✅ Normal traffic (1500- and 69-byte frames, 7 peers), denied membership and tampered packets all behave as expected. | Anything about the C leaf, which has no network code yet. A stock `zerotier-one` program or the lab controller as the peer. A peer with "encrypted HELLO" switched on: such a peer sends its HELLO with extended armor, which a leaf without AES cannot read. The setting is off by default (`service/OneService.cpp`, `encryptedHelloEnabled`, default false), so this is a rule for the deployer: do not switch it on at peers of the leaf (D-5a). That peers never send AES: a peer chooses its suite from the version it has learned, so the leaf must still reject AES packets, and it does (A-3). |
+```yaml
+- id: R-1
+  asked: >-
+    Can a leaf without AES talk to a normal ZeroTier node? The reference C++ core, built to announce
+    protocol version 11, never to select AES, and to abort if any AES code is reached, against the
+    unchanged version-13 reference core.
+  method: "Host interoperability test on loopback (a test, not a proof)"
+  result: >-
+    ✅ Normal traffic (1500- and 69-byte frames, 7 peers), denied membership and tampered packets all
+    behave as expected.
+  does_not_show: >-
+    Anything about the C leaf (for that: E-6). A stock `zerotier-one` program or the lab controller
+    as the peer. A peer with "encrypted HELLO" switched on: such a peer sends its HELLO with
+    extended armor, which a leaf without AES cannot read. The setting is off by default
+    (`service/OneService.cpp`, `encryptedHelloEnabled`, default false), so this is a rule for the
+    deployer: do not switch it on at peers of the leaf (D-5a). That peers never send AES: a peer
+    chooses its suite from the version it has learned, so the leaf must still reject AES packets,
+    and it does (A-3).
+```
 
 ## Attempts that failed or were changed
 
-| ID | What happened | Consequence |
-|---|---|---|
-| F-1 | Ubuntu's Frama-C package has no WP plug-in. | Frama-C 33.0 and Alt-Ergo come from opam (`proofs/opam-setup.sh`). |
-| F-2 | Eva started directly on the function (no harness) reported a certain out-of-bounds read. It was a false alarm: Eva invents its own small buffer and ignores the stated buffer size. | A harness (`proofs/wire_eva.c`) supplies the buffer. |
-| F-3 | The first contract only limited the successful answers. A function that always answers "drop" would have passed all three tools (found by review 1). | The contract and the CBMC harness now state the exact rule for each outcome, in both directions (A-2, A-5), and A-3 was added. |
-| F-4 | With the exact contract, WP left 30 of 127 goals unproved (time-out). Cause: the code took byte 14 apart with a shift and a mask, and the provers could not connect "upper half is 2 and lower half is 1" with the simplified form of the same statement. | The code now compares byte 14 with `0x21` and tests flag bits directly: simpler code, same behaviour. CBMC confirms that this equals the wire-format rule (A-2). After the change: 126 of 126. |
-| F-5 | Eva cannot evaluate the three outcome rules on unknown input, also when the analysis is split by length and by the deciding bytes. | Eva is used for run-time errors and preconditions only (A-4). |
-| F-6 | The first runner script accepted a WP run with "0 of 0 goals" and replaced the tool's exit status (review 1). Later the Eva gate still passed if its summary was missing (review 2). | `proofs/run.sh` now needs, for each tool: exit status 0, a non-zero number of checks, all passed, and the expected summary lines present. |
-| F-7 | The rules accepted a fragment of exactly 16 bytes (header only, no payload). The reference receive path handles a fragment only when it is longer than 16 bytes (`Switch.cpp`, `len > 16`). All three tools had "proved" the wrong rule, because the rule itself was wrong (found by review 2). | Fragments now need 17 bytes. A cover target and a mutant guard it. |
-| F-8 | The rules accepted heads with the "extended armor" flag. In the reference that flag means a second encryption pass with AES and an ephemeral key, which this leaf does not have (found by review 2). | Such heads are now dropped. A cover target and a mutant guard it. |
-| F-9 | Code size was reported as 188 bytes in one file and 174 in another, and the mutation results came from hand-run commands. | `proofs/run.sh target` and `proofs/run.sh mutate` make both repeatable. |
-| F-11 | The first 32-bit CBMC run failed in the harness itself. Cause: with the host's C headers and a 32-bit model, `uint64_t` became 32 bits wide, so the tool analysed a program that the target never runs. | The 32-bit step preprocesses with the target compiler and its headers; the layout assertion then holds in CBMC as well. |
-| F-12 | The first reassembly proof ran on the workstation at full packet size and used all its memory; the session had to be restarted. | Heavy proofs run on another host with a memory limit per process (`proofs/remote.sh`); every local prover process has a 6 GB limit. |
-| F-13 | With the C library's `memcpy` and with harness datagrams of unknown size, CBMC needed more than 16 GB even for 128-byte packets. | The module copies with its own bounded loop (which also removes the library call from the target code), and the harness uses fixed-size arrays. |
-| F-14 | Two "failures" were not errors in the code: the clock subtraction wraps on purpose, and the check for unsigned overflow flagged it (in the code and in the harness). | The wrap is marked as intended at exactly those two lines; the check stays on everywhere else. |
-| F-15 | The full-size reassembly proof with CBMC failed three times. The built-in SAT solver stopped with "out of memory" at 78 GB on a machine with 900 GB free: its own size limit, not the machine's. With two other SAT solvers the formula alone passed 370 GB each and was still growing; those runs were stopped. | Reassembly was split into small functions with contracts and proved with WP at full size (B-1, B-2). CBMC stays as a cross-check at 64 bytes. |
-| F-16 | A mutation step that was stopped half-way left one deliberate error in `src/reasm.c`, and that file was committed. The proofs on the next run would have rejected it; it was found before that, by a leftover backup file. | The file was restored. The mutation step now changes a copy of the sources, never the sources. |
-| F-17 | The first gate proof failed the check "the packet given to the primitive is addressed to this node". Cause: the gate trusted that a head waiting in the reassembly memory had passed the address check when it arrived. That is true in real runs, but the gate's own code did not guarantee it. | The gate applies the address rule to the complete packet as well. It no longer depends on what an earlier call left in memory. |
-| F-18 | The remote runner reported failure whenever a remote command printed nothing, so a correct start looked like an error and the "wait" step never ran. | Fixed; the exit status is now that of the remote command. |
-| F-19 | The gate proof with WP stopped at 167 of 168 goals, then 170 of 172, with different goals failing from run to run: the provers lost track of what six separate writes to the output record leave unchanged. | The writes moved into one small function with the contract "only the output record changes". Then 173 of 173. Same lesson as for reassembly: small functions with contracts. |
-| F-20 | The first WP run with the stricter setting (no unsigned wrap) failed in two older places: the packet number was built with `v << 8` in a loop, and the clock difference wrapped on purpose under a `#pragma`. | Both are plain arithmetic now. The packet number's value moved into the WP contract (A-5), and the clock difference got an exact contract, which made the slot rule provable (B-1). No `#pragma` is left in `src/`. |
-| F-21 | A rotation written with a variable count, `(v % (1 << (32 - c))) << c`, left three goals unproved; so did the same with constant counts and a shift. | Four macros with the constants written out, as arithmetic (`(v % 2^25) * 2^7 + v / 2^25`). The compiler still emits one `ror`. |
-| F-22 | The target build failed although every proof passed: the compiler had turned the wipe loop, and a zero initializer, into calls of the C library's `memset`. | The wipe loops carry a barrier that the compiler cannot see through; the initializer became a wipe call. The rule "no undefined symbol" in the runner is what found it. |
-| F-23 | Poly1305 value proofs, three failures on the way. (1) With the limb value as an ACSL logic function, goals that compare two memory states timed out; as a macro they pass. (2) The block step as one function ("add, then multiply") needed a substitution inside a product; no prover did it; split into two functions, each contract is direct. (3) The multiplication stated as "congruent modulo 2^130 − 5" was unstable: the same goal passed in one run and timed out in the next, because the prover must find the multiplier. | The contract now names the multiplier (D-4 c), with the last carry as a proof-only output. General lesson: where a statement needs a witness, write the witness down; where it is not obvious, let computer algebra find it and the prover check it. |
-| F-24 | Found by review, invisible to WP: the slot scan read the time stamp of a free slot, which `ztl_reasm_init()` never writes. For WP an unwritten integer is just some integer. | The time is read only for slots in use. |
-| F-25 | Found by both reviews: `ztl_auth_open()` took "decrypt or not" as a free argument, so the contract allowed opening an unencrypted HELLO as if it were encrypted. The gate never did that. | The contract requires that the mode is the suite in the packet's flags, and the gate applies the suite rule to the complete packet so that it can prove this at the call. |
-| F-26 | Found by review: the mutation step called a deliberate error "rejected" whenever the tool run failed, also when the changed file no longer compiled. | "Rejected" now needs a tool that ran and reported the error; other failures are "BROKEN" and fail the step. |
-| F-27 | Found by review: two deliberate errors passed all vectors. "Only the low byte of the block number" (packets need at most 33 blocks) and "skip block 126 of a message" (the longest test message had 126 full blocks). | Vectors for block numbers up to 1025 and messages up to 2,048 bytes; both errors are in the mutation list. |
-| F-28 | CBMC stopped the seal-then-open harness with "too many addressed objects". | More object bits (`--object-bits 12`). |
-| F-29 | Two deliberate errors in the protocol layer were caught by the address sanitizer, and the mutation step still called them "BROKEN": the sanitizer writes "ERROR" in capitals, and the runner's summary line kept only lines with "rror". Two more were "BROKEN" for a plain reason: the change made a parameter unused, which is a compile error here. | The summary line takes the sanitizer's report; the two errors were rewritten so that every name stays in use. |
-| F-30 | The deliberate error "a dictionary value does not end at a carriage return" survived all 144 dictionary vectors. They were made by the reference's writer, which never writes that byte as a line end. | 54 hand-made dictionaries, answered by the reference's reader (E-4). A reader must be tested with input from outside its writer's range. |
-| F-31 | The dictionary reader's first form left 2 of 245 goals unproved: the loop over lines could not be shown to end, because the helper "is this byte a line end" had no statement about its result, and a comparison went through a cast between pointer types. A second form left 2 of 269: a key byte was converted from `char`, which can be negative, and the "start of this line" in a loop invariant was written with a label that means the inner loop's own round. | The helper's contract states its result; keys are bytes; the line start is a proof-only variable. 267 of 267. |
-| F-32 | The target build failed once more on a call to `memset`: the compiler had replaced a zeroing loop in the new code (see F-22). | The same barrier as in the wipe loops. The rule "no undefined symbol" found it again. |
-| F-33 | Two of the first failures of the protocol test were errors in the test: it put a raw byte 13 into a hand-made configuration (the reader, rightly, ended the value there), and it read the verb of a packet that was still encrypted. | Test corrected. The first one led to F-30. |
-| F-10 | The fix for F-8 was too broad: it dropped every head with bit 7. But every peer up to version 1.14 sets bit 7 on each Salsa20-encrypted packet (old "encrypted" flag, `setCipher()` in those versions), and the reference ignores the bit with suite 1. The leaf would have refused all traffic from such peers. Found while writing the reference model for A-2, by reading older upstream sources; the tests against the 1.16 reference could not show it. | Bit 7 is refused only with suite 0. A cover target and a mutant guard it. |
+```yaml
+- id: F-1
+  happened: "Ubuntu's Frama-C package has no WP plug-in."
+  consequence: "Frama-C 33.0 and Alt-Ergo come from opam (`proofs/opam-setup.sh`)."
+- id: F-2
+  happened: >-
+    Eva started directly on the function (no harness) reported a certain out-of-bounds read. It was
+    a false alarm: Eva invents its own small buffer and ignores the stated buffer size.
+  consequence: "A harness (`proofs/wire_eva.c`) supplies the buffer."
+- id: F-3
+  happened: >-
+    The first contract only limited the successful answers. A function that always answers "drop"
+    would have passed all three tools (found by review 1).
+  consequence: >-
+    The contract and the CBMC harness now state the exact rule for each outcome, in both directions
+    (A-2, A-5), and A-3 was added.
+- id: F-4
+  happened: >-
+    With the exact contract, WP left 30 of 127 goals unproved (time-out). Cause: the code took byte
+    14 apart with a shift and a mask, and the provers could not connect "upper half is 2 and lower
+    half is 1" with the simplified form of the same statement.
+  consequence: >-
+    The code now compares byte 14 with `0x21` and tests flag bits directly: simpler code, same
+    behaviour. CBMC confirms that this equals the wire-format rule (A-2). After the change: 126 of
+    126.
+- id: F-5
+  happened: >-
+    Eva cannot evaluate the three outcome rules on unknown input, also when the analysis is split by
+    length and by the deciding bytes.
+  consequence: "Eva is used for run-time errors and preconditions only (A-4)."
+- id: F-6
+  happened: >-
+    The first runner script accepted a WP run with "0 of 0 goals" and replaced the tool's exit
+    status (review 1). Later the Eva gate still passed if its summary was missing (review 2).
+  consequence: >-
+    `proofs/run.sh` now needs, for each tool: exit status 0, a non-zero number of checks, all
+    passed, and the expected summary lines present.
+- id: F-7
+  happened: >-
+    The rules accepted a fragment of exactly 16 bytes (header only, no payload). The reference
+    receive path handles a fragment only when it is longer than 16 bytes (`Switch.cpp`, `len > 16`).
+    All three tools had "proved" the wrong rule, because the rule itself was wrong (found by review
+    2).
+  consequence: "Fragments now need 17 bytes. A cover target and a mutant guard it."
+- id: F-8
+  happened: >-
+    The rules accepted heads with the "extended armor" flag. In the reference that flag means a
+    second encryption pass with AES and an ephemeral key, which this leaf does not have (found by
+    review 2).
+  consequence: "Such heads are now dropped. A cover target and a mutant guard it."
+- id: F-9
+  happened: >-
+    Code size was reported as 188 bytes in one file and 174 in another, and the mutation results
+    came from hand-run commands.
+  consequence: "`proofs/run.sh target` and `proofs/run.sh mutate` make both repeatable."
+- id: F-10
+  happened: >-
+    The fix for F-8 was too broad: it dropped every head with bit 7. But every peer up to version
+    1.14 sets bit 7 on each Salsa20-encrypted packet (old "encrypted" flag, `setCipher()` in those
+    versions), and the reference ignores the bit with suite 1. The leaf would have refused all
+    traffic from such peers. Found while writing the reference model for A-2, by reading older
+    upstream sources; the tests against the 1.16 reference could not show it.
+  consequence: "Bit 7 is refused only with suite 0. A cover target and a mutant guard it."
+- id: F-11
+  happened: >-
+    The first 32-bit CBMC run failed in the harness itself. Cause: with the host's C headers and a
+    32-bit model, `uint64_t` became 32 bits wide, so the tool analysed a program that the target
+    never runs.
+  consequence: >-
+    The 32-bit step preprocesses with the target compiler and its headers; the layout assertion then
+    holds in CBMC as well.
+- id: F-12
+  happened: >-
+    The first reassembly proof ran on the workstation at full packet size and used all its memory;
+    the session had to be restarted.
+  consequence: >-
+    Heavy proofs run on another host with a memory limit per process (`proofs/remote.sh`); every
+    local prover process has a 6 GB limit.
+- id: F-13
+  happened: >-
+    With the C library's `memcpy` and with harness datagrams of unknown size, CBMC needed more than
+    16 GB even for 128-byte packets.
+  consequence: >-
+    The module copies with its own bounded loop (which also removes the library call from the target
+    code), and the harness uses fixed-size arrays.
+- id: F-14
+  happened: >-
+    Two "failures" were not errors in the code: the clock subtraction wraps on purpose, and the
+    check for unsigned overflow flagged it (in the code and in the harness).
+  consequence: >-
+    The wrap is marked as intended at exactly those two lines; the check stays on everywhere else.
+- id: F-15
+  happened: >-
+    The full-size reassembly proof with CBMC failed three times. The built-in SAT solver stopped
+    with "out of memory" at 78 GB on a machine with 900 GB free: its own size limit, not the
+    machine's. With two other SAT solvers the formula alone passed 370 GB each and was still
+    growing; those runs were stopped.
+  consequence: >-
+    Reassembly was split into small functions with contracts and proved with WP at full size (B-1,
+    B-2). CBMC stays as a cross-check at 64 bytes.
+- id: F-16
+  happened: >-
+    A mutation step that was stopped half-way left one deliberate error in `src/reasm.c`, and that
+    file was committed. The proofs on the next run would have rejected it; it was found before that,
+    by a leftover backup file.
+  consequence: >-
+    The file was restored. The mutation step now changes a copy of the sources, never the sources.
+- id: F-17
+  happened: >-
+    The first gate proof failed the check "the packet given to the primitive is addressed to this
+    node". Cause: the gate trusted that a head waiting in the reassembly memory had passed the
+    address check when it arrived. That is true in real runs, but the gate's own code did not
+    guarantee it.
+  consequence: >-
+    The gate applies the address rule to the complete packet as well. It no longer depends on what
+    an earlier call left in memory.
+- id: F-18
+  happened: >-
+    The remote runner reported failure whenever a remote command printed nothing, so a correct start
+    looked like an error and the "wait" step never ran.
+  consequence: "Fixed; the exit status is now that of the remote command."
+- id: F-19
+  happened: >-
+    The gate proof with WP stopped at 167 of 168 goals, then 170 of 172, with different goals
+    failing from run to run: the provers lost track of what six separate writes to the output record
+    leave unchanged.
+  consequence: >-
+    The writes moved into one small function with the contract "only the output record changes".
+    Then 173 of 173. Same lesson as for reassembly: small functions with contracts.
+- id: F-20
+  happened: >-
+    The first WP run with the stricter setting (no unsigned wrap) failed in two older places: the
+    packet number was built with `v << 8` in a loop, and the clock difference wrapped on purpose
+    under a `#pragma`.
+  consequence: >-
+    Both are plain arithmetic now. The packet number's value moved into the WP contract (A-5), and
+    the clock difference got an exact contract, which made the slot rule provable (B-1). No
+    `#pragma` is left in `src/`.
+- id: F-21
+  happened: >-
+    A rotation written with a variable count, `(v % (1 << (32 - c))) << c`, left three goals
+    unproved; so did the same with constant counts and a shift.
+  consequence: >-
+    Four macros with the constants written out, as arithmetic (`(v % 2^25) * 2^7 + v / 2^25`). The
+    compiler still emits one `ror`.
+- id: F-22
+  happened: >-
+    The target build failed although every proof passed: the compiler had turned the wipe loop, and
+    a zero initializer, into calls of the C library's `memset`.
+  consequence: >-
+    The wipe loops carry a barrier that the compiler cannot see through; the initializer became a
+    wipe call. The rule "no undefined symbol" in the runner is what found it.
+- id: F-23
+  happened: >-
+    Poly1305 value proofs, three failures on the way. (1) With the limb value as an ACSL logic
+    function, goals that compare two memory states timed out; as a macro they pass. (2) The block
+    step as one function ("add, then multiply") needed a substitution inside a product; no prover
+    did it; split into two functions, each contract is direct. (3) The multiplication stated as
+    "congruent modulo 2^130 − 5" was unstable: the same goal passed in one run and timed out in the
+    next, because the prover must find the multiplier.
+  consequence: >-
+    The contract now names the multiplier (D-4 c), with the last carry as a proof-only output.
+    General lesson: where a statement needs a witness, write the witness down; where it is not
+    obvious, let computer algebra find it and the prover check it.
+- id: F-24
+  happened: >-
+    Found by review, invisible to WP: the slot scan read the time stamp of a free slot, which
+    `ztl_reasm_init()` never writes. For WP an unwritten integer is just some integer.
+  consequence: "The time is read only for slots in use."
+- id: F-25
+  happened: >-
+    Found by both reviews: `ztl_auth_open()` took "decrypt or not" as a free argument, so the
+    contract allowed opening an unencrypted HELLO as if it were encrypted. The gate never did that.
+  consequence: >-
+    The contract requires that the mode is the suite in the packet's flags, and the gate applies the
+    suite rule to the complete packet so that it can prove this at the call.
+- id: F-26
+  happened: >-
+    Found by review: the mutation step called a deliberate error "rejected" whenever the tool run
+    failed, also when the changed file no longer compiled.
+  consequence: >-
+    "Rejected" now needs a tool that ran and reported the error; other failures are "BROKEN" and
+    fail the step.
+- id: F-27
+  happened: >-
+    Found by review: two deliberate errors passed all vectors. "Only the low byte of the block
+    number" (packets need at most 33 blocks) and "skip block 126 of a message" (the longest test
+    message had 126 full blocks).
+  consequence: >-
+    Vectors for block numbers up to 1025 and messages up to 2,048 bytes; both errors are in the
+    mutation list.
+- id: F-28
+  happened: "CBMC stopped the seal-then-open harness with \"too many addressed objects\"."
+  consequence: "More object bits (`--object-bits 12`)."
+- id: F-29
+  happened: >-
+    Two deliberate errors in the protocol layer were caught by the address sanitizer, and the
+    mutation step still called them "BROKEN": the sanitizer writes "ERROR" in capitals, and the
+    runner's summary line kept only lines with "rror". Two more were "BROKEN" for a plain reason:
+    the change made a parameter unused, which is a compile error here.
+  consequence: >-
+    The summary line takes the sanitizer's report; the two errors were rewritten so that every name
+    stays in use.
+- id: F-30
+  happened: >-
+    The deliberate error "a dictionary value does not end at a carriage return" survived all 144
+    dictionary vectors. They were made by the reference's writer, which never writes that byte as a
+    line end.
+  consequence: >-
+    54 hand-made dictionaries, answered by the reference's reader (E-4). A reader must be tested
+    with input from outside its writer's range.
+- id: F-31
+  happened: >-
+    The dictionary reader's first form left 2 of 245 goals unproved: the loop over lines could not
+    be shown to end, because the helper "is this byte a line end" had no statement about its result,
+    and a comparison went through a cast between pointer types. A second form left 2 of 269: a key
+    byte was converted from `char`, which can be negative, and the "start of this line" in a loop
+    invariant was written with a label that means the inner loop's own round.
+  consequence: >-
+    The helper's contract states its result; keys are bytes; the line start is a proof-only
+    variable. 267 of 267.
+- id: F-32
+  happened: >-
+    The target build failed once more on a call to `memset`: the compiler had replaced a zeroing
+    loop in the new code (see F-22).
+  consequence: >-
+    The same barrier as in the wipe loops. The rule "no undefined symbol" found it again.
+- id: F-33
+  happened: >-
+    Two of the first failures of the protocol test were errors in the test: it put a raw byte 13
+    into a hand-made configuration (the reader, rightly, ended the value there), and it read the
+    verb of a packet that was still encrypted.
+  consequence: "Test corrected. The first one led to F-30."
+- id: F-34
+  happened: >-
+    With contracts on the whole protocol layer, one goal of `ztl_input()` stayed open, in the 32-bit
+    model only (time-out): "the reply length is 0, or 28 to 2,048" on the path of a verb whose
+    handler makes no reply. The statement was true: such a handler cannot write the reply length.
+    But the prover had to get that from the handler's list of what it may change, through its model
+    of memory.
+  consequence: >-
+    The reply length stays in a local variable and goes to the caller once, at the one exit. Then
+    1,779 of 1,779 goals (32-bit model: 1,785 of 1,785). Same lesson as F-19: do not make the prover
+    reason about what a call leaves unchanged; write the code so that the question does not come up.
+- id: F-35
+  happened: >-
+    Two deliberate errors in the protocol layer stopped applying when the lines that they change
+    were rewritten after review round 3: their text patterns no longer matched. The mutation step
+    reports that ("NOT APPLIED") and fails, but the partial runs in between selected other errors by
+    name, so these two were in no run. Found by a dry application of every error to the sources.
+  consequence: >-
+    Both patterns corrected; the protocol test rejects each. "Every error rejected" is claimed only
+    from a run of the whole list in one piece (E-7).
+- id: F-36
+  happened: >-
+    The first run of the search for unreachable code (E-10) reported three places, all in the
+    receive gate: after the call of the authentication primitive the gate tested once more that an
+    unencrypted packet is HELLO, "so that the rule does not depend on that property of the
+    primitive". WP proves that no input reaches the inside of that test: the primitive's contract
+    says that a plain open changes nothing. The branch could never run, so no test could ever
+    exercise it.
+  consequence: >-
+    The branch is removed; an assertion that WP proves says the same at that place. If the
+    primitive's contract is ever weakened, the gate proof fails there. Gate: 189 goals in place of
+    193.
+```
 
 ## What all of this does not show
 
-- The protocol layer talks to the reference node on a host and, in a first run on a Teensy 4.1, to a stock controller and three stock 1.16.2 peers (configuration taken, ping with full-size frames, Telnet and SSH sessions over the overlay; a few minutes, no error counter moved). That run is an observation, not a test: no soak, no loss or rate figures, no hostile peer. `src/leaf.c` has no contracts: tests only (E-5, E-6, E-7). The Zephyr adapter has no test at all.
+- The protocol layer talks to the reference node on a host and, in a first run on a Teensy 4.1, to a stock controller and three stock 1.16.2 peers (configuration taken, ping with full-size frames, Telnet and SSH sessions over the overlay; a few minutes, no error counter moved). One measurement there: 5,000 echo requests at each of two sizes (56 and 1,252 bytes), none lost. These runs are observations, not tests: no soak, no rate limit found, no hostile peer. `src/leaf.c` is proved for memory safety, for its bounds and for four statements about the whole leaf (E-9, L-23 to L-29); what its messages mean and when its timers fire is tested, not proved (E-5, E-6, E-7). The Zephyr adapter has no proof and no test of its own.
 - The leaf trusts its provisioning: the pairwise keys come from a host tool that uses the reference's key agreement code, which is taken as correct here (tested through E-6, not proved).
 - The leaf does not check the controller's signature on a configuration (it takes one only from the pinned controller, under the pairwise MAC) and does not evaluate the network's rules.
 - **No protection against replay.** A recorded authentic packet, sent again by someone on the path, delivers its frame again, marks the peer as heard, and draws the same answer (an 18-byte "need certificate" draws a certificate and a subscription each time). The answers to requests are safe (they count once, for the waiting packet ID). No rate limit on answers.
@@ -188,8 +1073,8 @@ Errors that pass every check here, found by thinking and by review, not by a too
 - "Accepted" does not mean "authentic". A head or fragment is still untrusted data.
 - The record holds pointers into the caller's buffer, and it does not keep the raw flags. Nothing yet proves that later code stops using the pointers before the buffer is reused, or that it reads the flags again correctly.
 - The proofs use the tools' models of C (64-bit and 32-bit). The target's exact struct layout, the compiler and timing are outside them (V-17).
-- New source files are not picked up by the runner on their own: it lists its units by name. A file that reads network input without a proof does not make the run fail (V-21); `src/leaf.c` is such a file today.
-- The contracts are written by hand. A contract that is too weak proves less than it seems to; the deliberate errors (A-6, B-6) and the CBMC cross-checks (B-3, B-4) are the guard against that.
+- New source files are not picked up by the runner on their own: it lists its units by name. A file that reads network input without a proof does not make the run fail (V-21). Today all nine files in `src/` are in the list.
+- The contracts are written by hand. A contract that is too weak proves less than it seems to; the deliberate errors (A-6, B-6, C-4, D-9, E-7), the CBMC cross-checks (B-3, B-4, C-2) and the search for contradictory preconditions (E-10) are the guard against that.
 
 ## Independent reviews
 
