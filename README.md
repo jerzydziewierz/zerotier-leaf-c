@@ -2,7 +2,7 @@
 
 This repository holds one thing: an implementation of a ZeroTier protocol v1 client ("leaf" node) in ISO C11 for small microcontrollers, written so that its properties can be machine-checked, together with the proofs. Every function that touches network input has a written contract, and tools (Frama-C WP, CBMC, Frama-C Eva) check the code against it.
 
-⏭ Work in progress. It is not a usable network client yet.
+⏭ Work in progress. On a host it exchanges frames with the reference node; it has not run on a board yet.
 
 ## Part of a bigger work
 
@@ -21,7 +21,9 @@ Paths such as `../grey_zerotier/` and `../dl/sdk/` in scripts and documents poin
 
 ## Design in one paragraph
 
-A fixed-function node: at most 7 pinned peers, one network, packets of at most 2048 bytes in at most two parts, cipher suite Salsa20/12 + Poly1305 only (the node announces protocol version 11, so peers do not use AES with it). It is assigned to its network at provisioning time, in a secure environment, with one pairwise key per peer; no public-key cryptography runs on the device. No `malloc`, no C library calls, no recursion; RAM is the sum of static objects.
+A fixed-function node: at most 7 pinned peers, one network, packets of at most 2048 bytes in at most two parts, cipher suite Salsa20/12 + Poly1305 only (the node announces protocol version 11, so peers do not use AES with it). It is assigned to its network at provisioning time, in a secure environment, with one pairwise key per peer; no public-key cryptography runs on the device. No `malloc`, no C library calls, no recursion; RAM is the sum of static objects. The core does no input or output and keeps no clock: an adapter gives it each received datagram (`ztl_input()`), asks it regularly for the packets that are due (`ztl_poll()`), and gives it each frame that the host sends (`ztl_frame_to()`).
+
+Limits by design: it does not evaluate the network's flow rules (it admits pinned peers and tells the controller that it has no rules engine); it takes a network configuration only directly from the pinned controller, without checking the controller's signature, and only when the configuration fits one chunk; it does not relay, bridge or discover peers.
 
 ## Status
 
@@ -31,9 +33,13 @@ A fixed-function node: at most 7 pinned peers, one network, packets of at most 2
 | Reassembly (head + one fragment) | `src/reasm.c` | ✅ proved at full packet size (WP, small functions with contracts); cross-checked with CBMC at reduced size |
 | Receive gate ("authentication before effects") | `src/rx.c` | ✅ proved with WP against the contract of the authentication primitive; CBMC cross-check has no result yet |
 | Packet authentication and encryption (key mixing, Salsa20/12, Poly1305, open and seal) | `src/auth.c`, `src/salsa.c`, `src/poly.c` | ✅ same bytes as the reference on test vectors made by the reference; proved with WP: memory safety, no arithmetic wrap, the contract that the gate uses, the arithmetic of each Poly1305 step. ⏭ Not yet proved: Poly1305 over a whole message, any statement about the Salsa20/12 output, constant time |
-| Protocol messages (HELLO, configuration, frames), LZ4 decoder for the configuration, send path, Zephyr adapter | — | 🔴 not started; what a stock peer expects is in [reports/PROTOCOL.md](reports/PROTOCOL.md) |
+| LZ4 block decoder (a controller always compresses the configuration) | `src/lz4.c` | ✅ proved with WP for every input: no access outside either buffer, no wrap, every loop ends; same bytes as the reference on 58 blocks made by the reference |
+| Dictionary reader (configuration format) | `src/dict.c` | ✅ proved with WP for memory safety; same answers as the reference reader on 198 dictionaries |
+| Protocol messages: HELLO, OK, ECHO, configuration request and reply, certificate push, multicast subscription, frames both ways, sends in two datagrams | `src/leaf.c`, `include/ztl/leaf.h` | ✅ exchanges frames with the reference node on a host (loopback test); protocol test with known answers and random authentic packets under sanitizers. 🔴 No contracts yet: tests only |
+| Provisioning (pairwise keys from the identities, with the reference code) | `tools/provision/` | ✅ used by the loopback test. The key agreement is the reference's code: a trusted component, not proved |
+| Zephyr adapter (virtual Ethernet interface, one thread, no heap) | `zephyr/` | ⏭ builds for the Teensy 4.1; not yet run on a board; no test |
 
-Deliberate errors (mutation step): 50 errors in 56 tool runs, every one rejected by the tool that should see it. Code size of all modules: 3,090 bytes on Cortex-M7; RAM 4,440 bytes; stack of the receive path at most 456 bytes.
+Deliberate errors (mutation step): 93 errors in 99 tool runs, every one rejected by the tool that should see it. Measured in a firmware build for the Cortex-M7: code of the leaf 7,525 bytes, Zephyr adapter 2,076 bytes; RAM of the leaf 7,136 bytes (`struct ztl_leaf`), of the whole Zephyr module 15.8 KB with its thread stack and three packet buffers. The reference solution adds about 110 KB of RAM and 400 KB of code.
 
 "Proved" here means: the code meets its written contract, for the tools' model of C. It does not mean that the contract is the right one, that the compiler is correct, or anything about timing. [reports/PROOFS.md](reports/PROOFS.md) lists every check and proof attempted, in plain words, with what each one does not show, and the attempts that failed.
 
@@ -46,7 +52,7 @@ Deliberate errors (mutation step): 50 errors in 56 tool runs, every one rejected
 ## Check
 
 ```sh
-proofs/on-remote.sh start          # all steps: CBMC (64- and 32-bit model, reachability), Eva, WP (both models), target build, test vectors
+proofs/on-remote.sh start          # all steps: CBMC (64- and 32-bit model, reachability), Eva, WP (both models), target build, test vectors, protocol test
 proofs/on-remote.sh start mutate   # deliberate errors in the code; each must be rejected
 proofs/on-remote.sh wait           # wait for the end, copy results back; exit status 0 = all pass
 proofs/on-remote.sh status | stop | fetch
@@ -55,6 +61,17 @@ proofs/on-remote.sh status | stop | fetch
 No prover runs on the workstation. `proofs/on-remote.sh` copies the sources to another host (`ZTL_REMOTE`, default `prover-host`) and runs `proofs/run.sh` there as one systemd unit with a memory limit (`ZTL_MEM`, default 20G) and a time limit; `proofs/run.sh` refuses to start otherwise. The host needs `cbmc`, `z3`, `cvc5` (Ubuntu packages), Frama-C with WP and Alt-Ergo in the opam switch `ztl` (`proofs/opam-setup.sh start`, needs apt `graphviz` and `libgmp-dev`), and the Zephyr SDK ARM compiler in `~/ztl-sdk/arm-zephyr-eabi`. Results come back as `proofs/out-<step>.txt`.
 
 The CBMC harnesses for reassembly, for the receive gate and for the cryptography are large; they run one per unit through `proofs/remote.sh start|status|stop|fetch` (`ZTL_REMOTE`, default `user@big-prover-host`), at reduced packet size (see `reports/PROOFS.md`).
+
+Host tests (they need no prover; a C compiler, Python 3, and for the first one the reference source and its test node):
+
+```sh
+tests/host/build.sh <ZeroTier One source tree> /tmp/ztl-host    # leaf_node (with sanitizers) and the provisioning tool
+python3 tests/host/interop.py /tmp/ztl-host <reference_node> [--mode normal|deny|tamper] [--frame-size 69|1280|1500]
+```
+
+`interop.py` makes throw-away identities, starts the reference node (reference core with a test controller, from the reference solution's host tests) and the leaf on two loopback UDP sockets, and passes when both sides received the other's frames and ARP requests and no wrong frame. `proofs/run.sh proto` (part of the default run) is the protocol test without a peer: fixed cases with known answers, then random authentic packets.
+
+Zephyr: add this folder to `EXTRA_ZEPHYR_MODULES`, set `CONFIG_ZTL=y`, and call `ztl_zephyr_start()` with the provisioning data (`zephyr/include/ztl_zephyr.h`; `tools/provision/ztl_header.py` writes them as a C header). ⚠️ That header holds the pairwise keys: keep it and the firmware built from it on trusted hosts.
 
 The test vectors in `tests/vectors/reference.txt` come from the reference implementation. `tests/oracle/gen.sh <ZeroTier One source tree>` makes them again (on a build host); `proofs/run.sh vectors` checks the leaf against them. `proofs/poly_identity.wl` is an independent check of the Poly1305 arithmetic with a computer algebra system.
 

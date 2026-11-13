@@ -1,6 +1,6 @@
 # What a stock ZeroTier peer expects from this leaf
 
-State: 2026-11-13. A reading of the reference source (ZeroTier One 1.16.2, revision `fe29cd88`, directory `node/` unless another is named; line numbers are of that revision with the project's patches, stock behaviour reported). It answers the design questions D-6 and D-8 of [CHECKLIST.md](../CHECKLIST.md): which messages the leaf must send, answer and parse, and whether a leaf without an identity secret can do all of it. Evidence tags: [CODE] read in the source, [INFERRED] concluded from it. Nothing here was measured yet. Older peers (1.4 to 1.14) were not read for these points.
+State: 2026-11-13. 💡 The leaf now implements what this page lists under "must", and exchanges frames with the reference core on a host (see [PROOFS.md](PROOFS.md), "Attempts on the protocol layer"); a stock daemon and a stock controller as the other side are the next test. A reading of the reference source (ZeroTier One 1.16.2, revision `fe29cd88`, directory `node/` unless another is named; line numbers are of that revision with the project's patches, stock behaviour reported). It answers the design questions D-6 and D-8 of [CHECKLIST.md](../CHECKLIST.md): which messages the leaf must send, answer and parse, and whether a leaf without an identity secret can do all of it. Evidence tags: [CODE] read in the source, [INFERRED] concluded from it. Nothing here was measured yet. Older peers (1.4 to 1.14) were not read for these points.
 
 ## Result in short
 
@@ -59,6 +59,7 @@ ARP for IPv4 uses the group "broadcast MAC, ADI = the IPv4 address". A stock sen
 
 ## Open points
 
-- 🌱 Size of a real configuration from the lab controller (compressed and plain): decides the size of the decompression buffer and whether two fragments are enough.
+- ✅ [MEASURED] Size of a real configuration: the dictionary that a stock 1.16.2 controller gives a member of a small private network (one address, one route, default rules) is 1,121 bytes plain; the packet around it adds about 140. The leaf's plain buffer holds 2,020.
+- ⚠️ [UNVERIFIED] Request metadata: the leaf sends `v=7`, the vendor and version numbers and no `revr` (rules engine revision). By the comments in the reference, a controller then sends one "accept" rule and no capabilities or tags. The controller source is not in the tree that was read; the first run against a stock controller will show it.
 - 🌱 The same reading for peers 1.4 to 1.14.
 - 🌱 Verb counts from a run of the reference node (D-6), to confirm this table by measurement.
