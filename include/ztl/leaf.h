@@ -53,13 +53,14 @@ struct ztl_peer_state {
 	uint32_t rx_ms;    /* last authenticated packet from this peer */
 	uint32_t com_ms;   /* last certificate push */
 	uint32_t like_ms;  /* last multicast subscription */
-	uint8_t flags;     /* ZTL_P_... */
+	/* Each of these is 0 or 1 (separate bytes, not bits of one byte: the
+	 * provers then need no bit arithmetic). */
+	uint8_t hello_sent;
+	uint8_t hello_wait; /* the last HELLO has no OK yet */
+	uint8_t seen;       /* the peer authenticated a packet to this node not long ago */
+	uint8_t com_sent;
+	uint8_t like_sent;
 };
-#define ZTL_P_HELLO_SENT 0x01u
-#define ZTL_P_HELLO_WAIT 0x02u /* the last HELLO has no OK yet */
-#define ZTL_P_SEEN       0x04u /* the peer authenticated a packet to this node not long ago */
-#define ZTL_P_COM_SENT   0x08u
-#define ZTL_P_LIKE_SENT  0x10u
 
 struct ztl_stats {
 	uint32_t rx_lz4;       /* compressed packets decoded */
@@ -83,7 +84,9 @@ struct ztl_leaf {
 	struct ztl_stats stats;
 	uint16_t mtu;         /* of the network, from the configuration */
 	uint16_t com_len;
-	uint8_t flags;        /* ZTL_L_... */
+	uint8_t have_config;  /* 0 or 1: a configuration is in use */
+	uint8_t req_sent;     /* 0 or 1: a configuration request was sent */
+	uint8_t req_wait;     /* 0 or 1: the last configuration request has no answer yet */
 	uint8_t ctrl;         /* index of the controller in node.peer, or ZTL_PEERS */
 	uint8_t prefix;       /* bits of the network part of ip; 0: no address assigned */
 	uint8_t ip[4];        /* own IPv4 address on the network */
@@ -93,10 +96,6 @@ struct ztl_leaf {
 	uint8_t com[ZTL_COM_MAX];    /* own certificate of membership, as the controller sent it */
 	uint8_t plain[ZTL_PLAIN_MAX];/* body of the packet in work, after decompression */
 };
-#define ZTL_L_CONFIG   0x01u /* a configuration is in use */
-#define ZTL_L_REQ_SENT 0x02u
-#define ZTL_L_REQ_WAIT 0x04u /* the last configuration request has no answer yet */
-
 /* One Ethernet frame of the virtual network. data points into the datagram
  * given to ztl_input() or into the leaf and is valid until the next call. */
 struct ztl_frame {

@@ -292,7 +292,7 @@ static unsigned int input(const uint8_t *d, size_t len, int authentic, unsigned 
 	struct ztl_frame fr;
 	size_t tx_len = 12345;
 	unsigned int peer = 99;
-	const uint8_t had_config = leaf.flags & ZTL_L_CONFIG;
+	const uint8_t had_config = leaf.have_config;
 
 	if (dgram == NULL || tx == NULL) {
 		exit(2);
@@ -340,7 +340,7 @@ static unsigned int input(const uint8_t *d, size_t len, int authentic, unsigned 
 	}
 	if (r & ZTL_IN_CONFIG) {
 		n_config++;
-		if (leaf.flags & ZTL_L_CONFIG) {
+		if (leaf.have_config) {
 			CHECK(leaf.mtu >= ZTL_MTU_MIN && leaf.mtu <= ZTL_MTU_MAX && leaf.com_len >= 1 &&
 				      leaf.com_len <= ZTL_COM_MAX,
 			      "configuration values out of range");
@@ -433,9 +433,9 @@ static void scenario(void)
 	put64(b + 1, leaf.ps[0].hello_id ^ 1u);
 	fill(b + 9, 16);
 	b[17] = 13;
-	CHECK(from_peer(0, 0x03, b, 25, 1) == 0 && (leaf.ps[0].flags & ZTL_P_HELLO_WAIT), "OK for another packet ID taken");
+	CHECK(from_peer(0, 0x03, b, 25, 1) == 0 && leaf.ps[0].hello_wait, "OK for another packet ID taken");
 	put64(b + 1, leaf.ps[0].hello_id);
-	CHECK(from_peer(0, 0x03, b, 25, 1) == 0 && !(leaf.ps[0].flags & ZTL_P_HELLO_WAIT), "OK(HELLO) not taken");
+	CHECK(from_peer(0, 0x03, b, 25, 1) == 0 && !leaf.ps[0].hello_wait, "OK(HELLO) not taken");
 	n = ztl_poll(&leaf, now_ms, tx, &peer);
 	CHECK(n != 0 && peer == 0 && ztl_auth_open(peer_key[0], tx, n, 1) == 1 && tx[27] == 0x0b && memcmp(tx + 28, nwid, 8) == 0 &&
 		      tx[36] == 0 && tx[37] == n - 28 - 10 - 16 && memcmp(tx + 38, "v=7\n", 4) == 0,
@@ -446,11 +446,11 @@ static void scenario(void)
 	 * answer for another request; wrong MTU; broken certificate; wrong total
 	 * length; for another node; for another network; a public network. */
 	n = make_chunk(b, 500, 0);
-	CHECK(from_peer(1, 0x0c, b, n, 1) == 0 && !(leaf.flags & ZTL_L_CONFIG), "configuration from a peer that is not the controller");
+	CHECK(from_peer(1, 0x0c, b, n, 1) == 0 && !leaf.have_config, "configuration from a peer that is not the controller");
 	b[0] = 0x0b;
 	put64(b + 1, req ^ 1u);
 	n = 9 + make_chunk(b + 9, 500, 0);
-	CHECK(from_peer(0, 0x03, b, n, 1) == 0 && !(leaf.flags & ZTL_L_CONFIG), "configuration for another request");
+	CHECK(from_peer(0, 0x03, b, n, 1) == 0 && !leaf.have_config, "configuration for another request");
 	for (int damage = 1; damage <= 7; damage++) {
 		if (damage == 4) {
 			continue;
@@ -458,8 +458,8 @@ static void scenario(void)
 		put64(b + 1, leaf.cfg_req_id);
 		n = 9 + make_chunk(b + 9, 500, damage);
 		r = from_peer(0, 0x03, b, n, 1);
-		CHECK(!(leaf.flags & ZTL_L_CONFIG) && (r & ~ZTL_IN_CONFIG) == 0, "damaged configuration %d accepted", damage);
-		CHECK(leaf.flags & ZTL_L_REQ_WAIT, "a refused answer ended the wait for the configuration");
+		CHECK(!leaf.have_config && (r & ~ZTL_IN_CONFIG) == 0, "damaged configuration %d accepted", damage);
+		CHECK(leaf.req_wait, "a refused answer ended the wait for the configuration");
 	}
 	/* The right one, through the LZ4 decoder (stored form), then the same answer again. */
 	put64(b + 1, leaf.cfg_req_id);
@@ -468,7 +468,7 @@ static void scenario(void)
 	const size_t c = lz4_store(comp, b, n);
 
 	r = from_peer(0, 0x03 | 0x80, comp, c, 1);
-	CHECK(r == ZTL_IN_CONFIG && (leaf.flags & ZTL_L_CONFIG) && leaf.mtu == 1280 && leaf.prefix == 24 && leaf.ip[0] == 10 &&
+	CHECK(r == ZTL_IN_CONFIG && leaf.have_config && leaf.mtu == 1280 && leaf.prefix == 24 && leaf.ip[0] == 10 &&
 		      leaf.ip[1] == 11 && leaf.ip[2] == 0 && leaf.ip[3] == 13 && leaf.com_len == 272 && leaf.cfg_ts == 500 &&
 		      leaf.stats.rx_lz4 == 1,
 	      "configuration not accepted (result %x)", r);
@@ -614,7 +614,7 @@ static void scenario(void)
 	CHECK(n != 0 && ztl_auth_open(peer_key[2], tx, n, 1) == 1 && tx[43] == 0 && tx[46] == 0, "ARP reply sent with an ARP request group");
 
 	/* An answer to a request must not bring back a configuration older than a pushed one. */
-	leaf.flags |= ZTL_L_REQ_WAIT;
+	leaf.req_wait = 1;
 	b[0] = 0x0b;
 	put64(b + 1, leaf.cfg_req_id);
 	n = 9 + make_chunk(b + 9, 400, 0);
@@ -624,10 +624,10 @@ static void scenario(void)
 	put64(b + 1, leaf.cfg_req_id ^ 1u);
 	b[9] = 0x07;
 	memcpy(b + 10, nwid, 8);
-	CHECK(from_peer(0, 0x02, b, 18, 1) == 0 && (leaf.flags & ZTL_L_CONFIG), "refusal for another request taken");
-	CHECK(from_peer(1, 0x02, b, 18, 1) == 0 && (leaf.flags & ZTL_L_CONFIG), "refusal from a peer that is not the controller taken");
+	CHECK(from_peer(0, 0x02, b, 18, 1) == 0 && leaf.have_config, "refusal for another request taken");
+	CHECK(from_peer(1, 0x02, b, 18, 1) == 0 && leaf.have_config, "refusal from a peer that is not the controller taken");
 	put64(b + 1, leaf.cfg_req_id);
-	CHECK(from_peer(0, 0x02, b, 18, 1) == ZTL_IN_CONFIG && !(leaf.flags & ZTL_L_CONFIG), "refusal by the controller ignored");
+	CHECK(from_peer(0, 0x02, b, 18, 1) == ZTL_IN_CONFIG && !leaf.have_config, "refusal by the controller ignored");
 	memcpy(b, nwid, 8);
 	b[8] = 8;
 	b[9] = 0;
@@ -782,7 +782,7 @@ static void round_poll_and_send(void)
 		const size_t first = ztl_tx_first(n);
 		static uint8_t whole[ZTL_PKT_MAX];
 
-		CHECK(i < NPEERS && (leaf.flags & ZTL_L_CONFIG) && len >= 1 && len <= leaf.mtu, "frame sent without reason");
+		CHECK(i < NPEERS && leaf.have_config && len >= 1 && len <= leaf.mtu, "frame sent without reason");
 		/* Join the two datagrams as a receiver does; the peer's key must open the result. */
 		memcpy(whole, tx, first);
 		const size_t second = ztl_tx_second(tx, n, &at);

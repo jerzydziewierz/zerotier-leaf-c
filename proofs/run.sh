@@ -199,7 +199,7 @@ src/leaf.c|proto|leaf: multicast frame to a single station delivered|s/	if ((b\[
 src/leaf.c|proto|leaf: certificate in a frame not checked for its length|s/	return (avail < need) ? 0u : need;/	return need;/
 src/leaf.c|proto|leaf: configuration push accepted from any peer|s/^\t\tif (i == l->ctrl) {/\t\tif (1) {/
 src/leaf.c|proto|leaf: configuration answer taken for another request|s/ \&\& id == l->cfg_req_id) {/) {/
-src/leaf.c|proto|leaf: configuration answer taken twice|s/			l->flags \&= (uint8_t)~ZTL_L_REQ_WAIT;/			;/
+src/leaf.c|proto|leaf: configuration answer taken twice|s/^\t\t\t\tl->req_wait = 0;/\t\t\t\tl->req_wait = 1;/
 src/leaf.c|proto|leaf: older pushed configuration accepted|s/ts <= l->cfg_ts/0/
 src/leaf.c|proto|leaf: configuration for another node accepted|s/ || id != ztl_be64(self8)//
 src/leaf.c|proto|leaf: configuration for another network accepted|s/ || nwid != ztl_be64(l->nwid)//
@@ -210,14 +210,14 @@ src/leaf.c|proto|leaf: certificate with a wrong length accepted|s/if (cn < 1 || 
 src/leaf.c|proto|leaf: ECHO longer than a packet answered|s/	if (n > ZTL_PKT_MAX - (ZTL_PKT_MIN + OK_HDR)) {/	if (0) {/
 src/leaf.c|proto|leaf: "fragmented" flag not set on a packet in two parts|s/		tx\[ZTL_PKT_IDX_FLAGS\] = ZTL_FLAG_FRAGMENTED;/		;/
 src/leaf.c|proto|leaf: fragment header without the destination|s/ztl_copy_bytes(\&pkt\[h\], pkt, ID_LEN + ZTL_ADDR_LEN);/ztl_copy_bytes(\&pkt[h], pkt, ID_LEN);/
-src/leaf.c|proto|leaf: no new certificate after the peer asked|s/		l->ps\[i\].flags \&= (uint8_t)~(ZTL_P_COM_SENT | ZTL_P_LIKE_SENT);/		l->ps[i].flags \&= 0xffu;/
-src/leaf.c|proto|leaf: encrypted packets to a peer that was never heard|s/^\tif ((s->flags \& ZTL_P_SEEN) == 0u) {/\tif (0) {/
+src/leaf.c|proto|leaf: no new certificate after the peer asked|/ERROR_NEED_MEMBERSHIP_CERTIFICATE \&\&/{n;n;s/l->ps\[i\].com_sent = 0;/l->ps[i].com_sent = 1;/}
+src/leaf.c|proto|leaf: encrypted packets to a peer that was never heard|s/^\tif (s->seen == 0u) {/\tif (0) {/
 src/leaf.c|proto|leaf: a silent peer is never forgotten|s/ztl_age_ms(now_ms, s->rx_ms) > ZTL_PEER_TIMEOUT_MS/0/
 src/leaf.c|proto|leaf: unicast frame sent to a peer that does not own the address|s/	if (!ztl_bytes_eq(dst, peer_mac, ZTL_ETH_ALEN)) {/	if (0) {/
 src/leaf.c|proto|leaf: ARP request sent without the address as group number|s/ztl_copy_bytes(\&b\[ZTL_NWID_LEN + 1u + ZTL_ETH_ALEN\], \&data\[24\], 4u);/zero(\&b[ZTL_NWID_LEN + 1u + ZTL_ETH_ALEN], 4u);/
 src/leaf.c|proto|leaf: subscription without the ARP group of the own address|s/	if (l->prefix != 0u) {/	if (0) {/
 src/leaf.c|proto|leaf: older configuration taken as the answer to a request|s/	    ts < l->cfg_ts || (pushed \&\& ts == l->cfg_ts)) {/	    (pushed \&\& ts <= l->cfg_ts)) {/
-src/leaf.c|proto|leaf: refusal by the controller ignored|s/		l->flags \&= (uint8_t)~ZTL_L_CONFIG;\n		l->com_len = 0;/X/;/const unsigned int had = l->flags \& ZTL_L_CONFIG;/{n;n;s/l->flags \&= (uint8_t)~ZTL_L_CONFIG;/l->flags \&= 0xffu;/}
+src/leaf.c|proto|leaf: refusal by the controller ignored|/const uint8_t had = l->have_config;/{n;n;s/l->have_config = 0;/l->have_config = had;/}
 src/leaf.c|proto|leaf: refusal taken for another request|s/ \&\& ztl_be64(\&b\[1\]) == l->cfg_req_id \&\&/ \&\&/
 src/leaf.c|proto|leaf: ARP reply sent with an ARP request group|s/ \&\&\n		    ztl_bytes_eq(data, arp_request, sizeof(arp_request))) {/X/;s/		    ztl_bytes_eq(data, arp_request, sizeof(arp_request))) {/		    ztl_bytes_eq(data, arp_request, sizeof(arp_request) - 1u)) {/
 src/leaf.c|proto|leaf: OK names another packet than the one it answers|s/	ztl_copy_bytes(\&tx\[ZTL_PKT_MIN + 1u\], \&pkt\[ZTL_PKT_IDX_IV\], ID_LEN);/	ztl_copy_bytes(\&tx[ZTL_PKT_MIN + 1u], \&pkt[ZTL_PKT_IDX_DEST], ID_LEN);/

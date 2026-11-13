@@ -83,7 +83,7 @@ static void apply_config(void)
 {
 	struct net_in_addr ip, mask;
 
-	if ((leaf.flags & ZTL_L_CONFIG) == 0u || leaf.prefix == 0u) {
+	if (leaf.have_config == 0u || leaf.prefix == 0u) {
 		overlay_down();
 		return;
 	}
@@ -357,7 +357,7 @@ void ztl_zephyr_get_status(struct ztl_zephyr_status *s)
 	s->leaf = leaf.stats;
 	s->gate = leaf.node.rx;
 	for (unsigned int i = 0; i < ZTL_PEERS; i++) {
-		if (leaf.node.peer[i].pinned && (leaf.ps[i].flags & ZTL_P_SEEN) != 0u) {
+		if (leaf.node.peer[i].pinned && leaf.ps[i].seen != 0u) {
 			s->peers_seen++;
 		}
 	}

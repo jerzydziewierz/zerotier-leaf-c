@@ -113,13 +113,28 @@ void ztl_mac_of(uint8_t mac[ZTL_ETH_ALEN], const uint8_t addr[ZTL_ADDR_LEN], con
 	}
 }
 
+/* A peer that nothing was sent to and nothing was heard from. */
+static void peer_state_clear(struct ztl_peer_state *s)
+{
+	s->hello_id = 0;
+	s->hello_ms = 0;
+	s->rx_ms = 0;
+	s->com_ms = 0;
+	s->like_ms = 0;
+	s->hello_sent = 0;
+	s->hello_wait = 0;
+	s->seen = 0;
+	s->com_sent = 0;
+	s->like_sent = 0;
+}
+
 void ztl_init(struct ztl_leaf *l, const uint8_t self[ZTL_ADDR_LEN], const uint8_t pub[ZTL_PUB_LEN],
 	      const uint8_t nwid[ZTL_NWID_LEN], uint64_t first_packet_id)
 {
 	ztl_copy_bytes(l->node.self, self, ZTL_ADDR_LEN);
 	for (unsigned int i = 0; i < ZTL_PEERS; i++) {
 		l->node.peer[i].pinned = 0;
-		l->ps[i].flags = 0;
+		peer_state_clear(&l->ps[i]);
 	}
 	ztl_reasm_init(&l->node.reasm);
 	l->node.rx.ok = 0;
@@ -143,7 +158,9 @@ void ztl_init(struct ztl_leaf *l, const uint8_t self[ZTL_ADDR_LEN], const uint8_
 	l->cfg_req_ms = 0;
 	l->mtu = 0;
 	l->com_len = 0;
-	l->flags = 0;
+	l->have_config = 0;
+	l->req_sent = 0;
+	l->req_wait = 0;
 	l->ctrl = (uint8_t)ZTL_PEERS;
 	l->prefix = 0;
 	zero(l->ip, sizeof(l->ip));
@@ -174,7 +191,7 @@ int ztl_pin(struct ztl_leaf *l, const uint8_t addr[ZTL_ADDR_LEN], const uint8_t 
 	ztl_copy_bytes(l->node.peer[free_at].addr, addr, ZTL_ADDR_LEN);
 	ztl_copy_bytes(l->node.peer[free_at].key, key, ZTL_KEY_LEN);
 	l->node.peer[free_at].pinned = 1;
-	l->ps[free_at].flags = 0;
+	peer_state_clear(&l->ps[free_at]);
 	/* The controller's address is the upper 40 bits of the network ID. */
 	if (ztl_bytes_eq(addr, l->nwid, ZTL_ADDR_LEN)) {
 		l->ctrl = (uint8_t)free_at;
@@ -251,7 +268,8 @@ static size_t send_hello(struct ztl_leaf *l, unsigned int i, uint32_t now_ms, ui
 	zero(&b[HELLO_FIXED + IDENTITY_LEN - 1u], 1u + 1u + 16u);
 	l->ps[i].hello_id = id;
 	l->ps[i].hello_ms = now_ms;
-	l->ps[i].flags |= ZTL_P_HELLO_SENT | ZTL_P_HELLO_WAIT;
+	l->ps[i].hello_sent = 1;
+	l->ps[i].hello_wait = 1;
 	return finish(l, i, tx, HELLO_LEN, 0);
 }
 
@@ -268,7 +286,8 @@ static size_t send_config_request(struct ztl_leaf *l, unsigned int i, uint32_t n
 	zero(&b[ZTL_NWID_LEN + 2u + CFG_META_LEN], 16u);
 	l->cfg_req_id = id;
 	l->cfg_req_ms = now_ms;
-	l->flags |= ZTL_L_REQ_SENT | ZTL_L_REQ_WAIT;
+	l->req_sent = 1;
+	l->req_wait = 1;
 	return finish(l, i, tx, CFG_REQ_LEN, 1);
 }
 
@@ -279,7 +298,7 @@ static size_t send_com(struct ztl_leaf *l, unsigned int i, uint32_t now_ms, uint
 	ztl_copy_bytes(&tx[ZTL_PKT_MIN], l->com, l->com_len);
 	zero(&tx[ZTL_PKT_MIN + l->com_len], COM_TAIL);
 	l->ps[i].com_ms = now_ms;
-	l->ps[i].flags |= ZTL_P_COM_SENT;
+	l->ps[i].com_sent = 1;
 	return finish(l, i, tx, ZTL_PKT_MIN + l->com_len + COM_TAIL, 1);
 }
 
@@ -302,7 +321,7 @@ static size_t send_like(struct ztl_leaf *l, unsigned int i, uint32_t now_ms, uin
 	zero(&tx[len + ZTL_NWID_LEN + ZTL_ETH_ALEN], 4u);
 	len += LIKE_ENTRY;
 	l->ps[i].like_ms = now_ms;
-	l->ps[i].flags |= ZTL_P_LIKE_SENT;
+	l->ps[i].like_sent = 1;
 	return finish(l, i, tx, len, 1);
 }
 
@@ -311,41 +330,43 @@ static size_t poll_peer(struct ztl_leaf *l, unsigned int i, uint32_t now_ms, uin
 {
 	struct ztl_peer_state *s = &l->ps[i];
 
-	if ((s->flags & ZTL_P_SEEN) != 0u && ztl_age_ms(now_ms, s->rx_ms) > ZTL_PEER_TIMEOUT_MS) {
-		s->flags &= (uint8_t)~(ZTL_P_SEEN | ZTL_P_COM_SENT | ZTL_P_LIKE_SENT);
+	if (s->seen != 0u && ztl_age_ms(now_ms, s->rx_ms) > ZTL_PEER_TIMEOUT_MS) {
+		s->seen = 0;
+		s->com_sent = 0;
+		s->like_sent = 0;
 	}
 	/* HELLO: at once, then again soon while no answer came, else at the
 	 * normal period. A peer learns the way to this node from the OK to
 	 * its own HELLO only, and may drop the first HELLO of a node that it
 	 * does not know yet without a word. */
-	const uint32_t period = ((s->flags & ZTL_P_HELLO_WAIT) != 0u || (s->flags & ZTL_P_SEEN) == 0u) ?
+	const uint32_t period = (s->hello_wait != 0u || s->seen == 0u) ?
 					ZTL_RETRY_MS : ZTL_HELLO_MS;
 
-	if ((s->flags & ZTL_P_HELLO_SENT) == 0u || ztl_age_ms(now_ms, s->hello_ms) >= period) {
+	if (s->hello_sent == 0u || ztl_age_ms(now_ms, s->hello_ms) >= period) {
 		return send_hello(l, i, now_ms, tx);
 	}
 	/* All other packets are encrypted: the peer can read them only when
 	 * it knows this node, which an authenticated packet from it shows. */
-	if ((s->flags & ZTL_P_SEEN) == 0u) {
+	if (s->seen == 0u) {
 		return 0;
 	}
 	if (i == l->ctrl) {
-		const uint32_t wait = ((l->flags & ZTL_L_CONFIG) != 0u && (l->flags & ZTL_L_REQ_WAIT) == 0u) ?
+		const uint32_t wait = (l->have_config != 0u && l->req_wait == 0u) ?
 					      ZTL_CONFIG_MS : ZTL_RETRY_MS;
 
-		if ((l->flags & ZTL_L_REQ_SENT) == 0u || ztl_age_ms(now_ms, l->cfg_req_ms) >= wait) {
+		if (l->req_sent == 0u || ztl_age_ms(now_ms, l->cfg_req_ms) >= wait) {
 			return send_config_request(l, i, now_ms, tx);
 		}
 	}
-	if ((l->flags & ZTL_L_CONFIG) == 0u) {
+	if (l->have_config == 0u) {
 		return 0;
 	}
 	/* Certificate first: a peer accepts frames and subscriptions of this
 	 * node only while it holds a certificate that agrees with its own. */
-	if ((s->flags & ZTL_P_COM_SENT) == 0u || ztl_age_ms(now_ms, s->com_ms) >= ZTL_COM_MS) {
+	if (s->com_sent == 0u || ztl_age_ms(now_ms, s->com_ms) >= ZTL_COM_MS) {
 		return send_com(l, i, now_ms, tx);
 	}
-	if ((s->flags & ZTL_P_LIKE_SENT) == 0u || ztl_age_ms(now_ms, s->like_ms) >= ZTL_LIKE_MS) {
+	if (s->like_sent == 0u || ztl_age_ms(now_ms, s->like_ms) >= ZTL_LIKE_MS) {
 		return send_like(l, i, now_ms, tx);
 	}
 	return 0;
@@ -371,8 +392,8 @@ size_t ztl_frame_to(struct ztl_leaf *l, unsigned int i, const uint8_t dst[ZTL_ET
 {
 	uint8_t peer_mac[ZTL_ETH_ALEN];
 
-	if ((l->flags & ZTL_L_CONFIG) == 0u || i >= ZTL_PEERS || !l->node.peer[i].pinned ||
-	    (l->ps[i].flags & ZTL_P_SEEN) == 0u || len < 1u || len > l->mtu) {
+	if (l->have_config == 0u || i >= ZTL_PEERS || !l->node.peer[i].pinned ||
+	    l->ps[i].seen == 0u || len < 1u || len > l->mtu) {
 		return 0;
 	}
 	if ((dst[0] & 0x01u) != 0u) {
@@ -498,21 +519,22 @@ static unsigned int config_apply(struct ztl_leaf *l, const uint8_t *d, size_t n,
 
 	if (cn < 1 || com_len_at(l->com, (size_t)cn) != (size_t)cn) {
 		l->com_len = 0;
-		l->flags &= (uint8_t)~ZTL_L_CONFIG;
+		l->have_config = 0;
 		count(&l->stats.config_bad);
 		return ZTL_IN_CONFIG;
 	}
 	/* A new certificate (the controller dates each one) and maybe another
 	 * address: every peer gets the certificate and the groups again. */
 	for (unsigned int i = 0; i < ZTL_PEERS; i++) {
-		l->ps[i].flags &= (uint8_t)~(ZTL_P_COM_SENT | ZTL_P_LIKE_SENT);
+		l->ps[i].com_sent = 0;
+		l->ps[i].like_sent = 0;
 	}
 	l->com_len = (uint16_t)cn;
 	l->mtu = (uint16_t)mtu;
 	l->prefix = prefix;
 	ztl_copy_bytes(l->ip, ip, 4u);
 	l->cfg_ts = ts;
-	l->flags |= ZTL_L_CONFIG;
+	l->have_config = 1;
 	count(&l->stats.configs);
 	return ZTL_IN_CONFIG;
 }
@@ -594,18 +616,18 @@ static unsigned int on_ok(struct ztl_leaf *l, unsigned int i, const uint8_t *b, 
 	/* An OK counts once, and only for the request that is waiting. */
 	if (verb == VERB_HELLO) {
 		/* Time stamp (8), version (1), major, minor (1 each), revision (2). */
-		if (n >= OK_HDR + 13u && b[OK_HDR + 8u] >= PROTO_VERSION_MIN && (l->ps[i].flags & ZTL_P_HELLO_WAIT) != 0u &&
+		if (n >= OK_HDR + 13u && b[OK_HDR + 8u] >= PROTO_VERSION_MIN && l->ps[i].hello_wait != 0u &&
 		    id == l->ps[i].hello_id) {
-			l->ps[i].flags &= (uint8_t)~ZTL_P_HELLO_WAIT;
+			l->ps[i].hello_wait = 0;
 		}
 	} else if (verb == VERB_NETWORK_CONFIG_REQUEST) {
-		if (i == l->ctrl && (l->flags & ZTL_L_REQ_WAIT) != 0u && id == l->cfg_req_id) {
+		if (i == l->ctrl && l->req_wait != 0u && id == l->cfg_req_id) {
 			const unsigned int r = on_config_chunk(l, &b[OK_HDR], n - OK_HDR, 0);
 
 			/* Only an answer that was taken ends the wait: after a
 			 * refused one the request goes out again soon. */
-			if (r != 0u && (l->flags & ZTL_L_CONFIG) != 0u) {
-				l->flags &= (uint8_t)~ZTL_L_REQ_WAIT;
+			if (r != 0u && l->have_config != 0u) {
+				l->req_wait = 0;
 			}
 			return r;
 		}
@@ -623,11 +645,11 @@ static unsigned int on_error(struct ztl_leaf *l, unsigned int i, const uint8_t *
 	 * that an old refusal sent again has no effect. */
 	if (n >= OK_HDR + 1u + ZTL_NWID_LEN && i == l->ctrl && b[0] == VERB_NETWORK_CONFIG_REQUEST &&
 	    (b[OK_HDR] == ERROR_NETWORK_ACCESS_DENIED || b[OK_HDR] == ERROR_OBJ_NOT_FOUND) &&
-	    (l->flags & ZTL_L_REQ_WAIT) != 0u && ztl_be64(&b[1]) == l->cfg_req_id &&
+	    l->req_wait != 0u && ztl_be64(&b[1]) == l->cfg_req_id &&
 	    ztl_bytes_eq(&b[OK_HDR + 1u], l->nwid, ZTL_NWID_LEN)) {
-		const unsigned int had = l->flags & ZTL_L_CONFIG;
+		const uint8_t had = l->have_config;
 
-		l->flags &= (uint8_t)~ZTL_L_CONFIG;
+		l->have_config = 0;
 		l->com_len = 0;
 		count(&l->stats.config_bad);
 		return (had != 0u) ? ZTL_IN_CONFIG : 0u;
@@ -636,7 +658,8 @@ static unsigned int on_error(struct ztl_leaf *l, unsigned int i, const uint8_t *
 	 * code the network. The peer wants the certificate again. */
 	if (n >= OK_HDR + 1u + ZTL_NWID_LEN && b[OK_HDR] == ERROR_NEED_MEMBERSHIP_CERTIFICATE &&
 	    ztl_bytes_eq(&b[OK_HDR + 1u], l->nwid, ZTL_NWID_LEN)) {
-		l->ps[i].flags &= (uint8_t)~(ZTL_P_COM_SENT | ZTL_P_LIKE_SENT);
+		l->ps[i].com_sent = 0;
+		l->ps[i].like_sent = 0;
 	} else {
 		count(&l->stats.rx_ignored);
 	}
@@ -652,7 +675,7 @@ static unsigned int deliver_frame(struct ztl_leaf *l, unsigned int i, const uint
 {
 	uint8_t peer_mac[ZTL_ETH_ALEN];
 
-	if ((l->flags & ZTL_L_CONFIG) == 0u) {
+	if (l->have_config == 0u) {
 		count(&l->stats.rx_no_config);
 		return 0;
 	}
@@ -796,7 +819,7 @@ unsigned int ztl_input(struct ztl_leaf *l, uint8_t *dgram, size_t len, uint32_t 
 
 	*peer = i;
 	l->ps[i].rx_ms = now_ms;
-	l->ps[i].flags |= ZTL_P_SEEN;
+	l->ps[i].seen = 1;
 	if ((p.verb_flags & VERB_FLAG_COMPRESSED) != 0u) {
 		n = ztl_lz4_decode(l->plain, ZTL_PLAIN_MAX, b, n);
 		if (n == 0u) {

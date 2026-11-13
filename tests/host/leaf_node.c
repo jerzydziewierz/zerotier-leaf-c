@@ -168,7 +168,7 @@ int main(int argc, char **argv)
 		while ((n = ztl_poll(&leaf, now_ms(), tx, &peer)) != 0) {
 			send_packet(n);
 		}
-		if ((leaf.flags & ZTL_L_CONFIG) && (int32_t)(now_ms() - next_frame) >= 0) {
+		if (leaf.have_config && (int32_t)(now_ms() - next_frame) >= 0) {
 			uint8_t arp[28] = { 0, 1, 8, 0, 6, 4, 0, 1 };
 			static const uint8_t bcast[ZTL_ETH_ALEN] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 
@@ -218,7 +218,7 @@ int main(int argc, char **argv)
 			}
 		}
 	}
-	const int ready = (leaf.flags & ZTL_L_CONFIG) != 0;
+	const int ready = leaf.have_config != 0;
 	const int ok = ready && frames && arps && !bad_frames && (frame_size < 1500 || fragments > 0);
 
 	printf("ready=%d frames=%u arps=%u bad_frames=%u wire=%u plaintext_leaks=0 configs=%u fragments=%u\n", ready,
