@@ -1,22 +1,24 @@
 #!/usr/bin/env bash
 # Run every proof. Exit status 0 only if every tool ran, exited 0 and
 # reported the expected result (a tool that proves nothing is a failure).
-# Usage: proofs/run.sh [cbmc|cbmc32|cover|cbmcpoly|eva|wp|wp32|target|vectors|proto|mutate]...
-# Default: cbmc cbmc32 cover cbmcpoly eva wp wp32 target vectors proto. proto is the host
+# Usage: proofs/run.sh [cbmc|cbmc32|cover|cbmcpoly|eva|wp|wp32|smoke|target|vectors|proto|mutate]...
+# Default: cbmc cbmc32 cover cbmcpoly eva wp wp32 smoke target vectors proto. proto is the host
 # test of the protocol layer (fixed cases, then random authentic packets, with sanitizers). cbmcpoly is the one
 # CBMC harness of the cryptography that ends in seconds (Poly1305 limb limits,
 # induction step); the others run through proofs/remote.sh. cbmc32 and wp32 repeat the
 # proofs with a 32-bit data model (CBMC: arm, on sources preprocessed by the
 # target compiler; WP: gcc_x86_32, the nearest ILP32 model that Frama-C has;
-# its struct layout is not the ARM one). "mutate" applies deliberate errors to
-# src/wire.c one at a time (it restores the file) and needs each to be rejected.
+# its struct layout is not the ARM one). smoke is wp once more with a search for
+# contracts that contradict themselves and for code that no input reaches.
+# "mutate" applies deliberate errors to a copy of the sources, one at a time,
+# and needs each to be rejected by the tool named for it.
 # ZTL_CC: target C compiler (default: Zephyr SDK arm-zephyr-eabi-gcc beside this repo).
 set -u
 cd "$(dirname "$0")/.."
 # Provers do not run on the workstation: start this script through
 # proofs/on-remote.sh, which sets ZTL_ON_REMOTE and a memory limit for the run.
 [ "${ZTL_ON_REMOTE:-}" = 1 ] || { echo "run.sh: use proofs/on-remote.sh start [steps] (no local prover runs)"; exit 2; }
-tools=("$@"); [ ${#tools[@]} -eq 0 ] && tools=(cbmc cbmc32 cover cbmcpoly eva wp wp32 target vectors proto)
+tools=("$@"); [ ${#tools[@]} -eq 0 ] && tools=(cbmc cbmc32 cover cbmcpoly eva wp wp32 smoke target vectors proto)
 FC0="opam exec --switch ztl -- frama-c -cpp-extra-args=-Iinclude -cpp-extra-args=-Isrc"
 # Units proved by WP, each alone: a function is proved against its contract,
 # and callers use the contracts of what they call.
@@ -66,14 +68,18 @@ for t in "${tools[@]}"; do
 		# Fail closed: the summaries must be present and non-empty.
 		grep -qE '^ +Preconditions +[1-9][0-9]* valid' $o || s=1
 		grep -qE 'statements reached \(out of ([0-9]+)\): 100% coverage' $o || s=1 ;;
-	wp|wp32) m=; [ $t = wp32 ] && m='-machdep gcc_x86_32'
+	wp|wp32|smoke) m=; [ $t = wp32 ] && m='-machdep gcc_x86_32'
+		# smoke: WP also tries to prove "false" from the preconditions of each function
+		# and at each statement. A success there is a contract that contradicts itself
+		# (it would prove anything) or code that no input reaches; it fails the step.
+		[ $t = smoke ] && m='-wp-smoke-tests'
 		: > $o; s=0; total=0
 		for u in $WP_UNITS; do
 			$LIM $FC $m $WP_STRICT $u -wp -wp-rte -wp-prover alt-ergo,z3,cvc5 -wp-timeout 60 -wp-cache none > $o.unit 2>&1 || s=1
 			g=$(sed -nE 's/.*Proved goals: +([0-9]+) \/ ([0-9]+)$/\1 \2/p' $o.unit)
 			set -- $g; [ $# -eq 2 ] && [ "$1" = "$2" ] && [ "$1" -gt 0 ] || s=1
 			total=$((total + ${1:-0})); echo "$u: Proved goals: ${1:-?} / ${2:-?}" >> $o
-			grep -E 'Timeout|Failed|rror' $o.unit >> $o
+			grep -E 'Timeout|Failed|rror|Doomed|[Ss]moke' $o.unit >> $o
 		done
 		echo "all units: $total goals" >> $o; rm -f $o.unit ;;
 	target) # Compile for the Cortex-M7 with all warnings as errors; report code size and stack.
@@ -189,7 +195,7 @@ src/dict.c|wp|dict: value copy one byte past the buffer|s/		if (j == cap) {/		if
 src/leaf.c|proto|leaf: packet ID not advanced (the same nonce again)|s/l->next_id = (id == UINT64_MAX) ? 0u : id + 1u;/l->next_id = id;/
 src/leaf.c|proto|leaf: HELLO says protocol version 13|s/	b\[0\] = ZTL_PROTO_VERSION;/	b[0] = 13u;/
 src/leaf.c|proto|leaf: OK(HELLO) says protocol version 13|s/	o\[8\] = ZTL_PROTO_VERSION;/	o[8] = 13u;/
-src/leaf.c|proto|leaf: HELLO with a foreign identity answered|s/if (n < HELLO_FIXED + IDENTITY_LEN || !ztl_bytes_eq(\&b\[HELLO_FIXED\], \&pkt\[ZTL_PKT_IDX_SRC\], ZTL_ADDR_LEN)) {/if (n < HELLO_FIXED + IDENTITY_LEN) {/
+src/leaf.c|proto|leaf: HELLO with a foreign identity answered|s/	    !ztl_bytes_eq(\&b\[HELLO_FIXED\], \&pkt\[ZTL_PKT_IDX_SRC\], ZTL_ADDR_LEN) || b\[HELLO_FIXED + ZTL_ADDR_LEN\] != 0u ||/	    b[HELLO_FIXED + ZTL_ADDR_LEN] != 0u ||/
 src/leaf.c|proto|leaf: frame delivered without a configuration|/count(\&l->stats.rx_no_config);/{n;s/return 0;/;/}
 src/leaf.c|proto|leaf: frame with a foreign source delivered|s/(src != NULL \&\& !ztl_bytes_eq(src, peer_mac, ZTL_ETH_ALEN))/(src != NULL \&\& !ztl_bytes_eq(src, src, ZTL_ETH_ALEN))/
 src/leaf.c|proto|leaf: frame longer than the MTU delivered|s/if (len < 1u || len > l->mtu || (src/if (len < 1u || (src/
@@ -200,7 +206,7 @@ src/leaf.c|proto|leaf: certificate in a frame not checked for its length|s/	retu
 src/leaf.c|proto|leaf: configuration push accepted from any peer|s/^\t\tif (i == l->ctrl) {/\t\tif (1) {/
 src/leaf.c|proto|leaf: configuration answer taken for another request|s/ \&\& id == l->cfg_req_id) {/) {/
 src/leaf.c|proto|leaf: configuration answer taken twice|s/^\t\t\t\tl->req_wait = 0;/\t\t\t\tl->req_wait = 1;/
-src/leaf.c|proto|leaf: older pushed configuration accepted|s/ts <= l->cfg_ts/0/
+src/leaf.c|proto|leaf: older pushed configuration accepted|s/	    ts < l->cfg_ts || (pushed \&\& ts == l->cfg_ts)) {/	    (!pushed \&\& ts < l->cfg_ts)) {/
 src/leaf.c|proto|leaf: configuration for another node accepted|s/ || id != ztl_be64(self8)//
 src/leaf.c|proto|leaf: configuration for another network accepted|s/ || nwid != ztl_be64(l->nwid)//
 src/leaf.c|proto|leaf: configuration of a public network accepted|s/ || type != 0u ||/ ||/

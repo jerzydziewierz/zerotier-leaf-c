@@ -180,14 +180,10 @@ int ztl_rx(struct ztl_node *n, uint8_t *dgram, size_t len, uint32_t now_ms,
 
 	const uint8_t vb = pkt[ZTL_PKT_IDX_VERB];
 
-	if (!encrypted && (vb & ZTL_VERB_MASK) != ZTL_VERB_HELLO) {
-		/* Cannot happen: a failed or plain open does not change pkt. Kept
-		 * so that the rule does not depend on that property of the primitive. */
-		count(&n->rx.bad_suite);
-		/*@ assert reasm_r8: ztl_reasm_valid(&n->reasm); */
-		return 0;
-	}
-
+	/* A plain open does not change pkt (contract of ztl_auth_open()), so an
+	 * unencrypted packet is still HELLO here. No second test at run time:
+	 * it would be code that no input reaches. */
+	/*@ assert plain_is_hello: !encrypted ==> (vb & ZTL_VERB_MASK) == ZTL_VERB_HELLO; */
 	deliver(out, p, vb, encrypted, &pkt[ZTL_PKT_MIN], plen - ZTL_PKT_MIN);
 	/*@ assert deliver_yes: ztl_gh_auth_yes == 1 && ztl_gh_auth_key == &n->peer[p].key[0]; */
 	/*@ assert deliver_pinned: n->peer[p].pinned != 0; */

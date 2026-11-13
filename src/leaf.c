@@ -65,6 +65,12 @@ _Static_assert(ZTL_PKT_MIN + MC_FRAME_HDR + ZTL_MTU_MAX <= ZTL_PKT_MAX, "a frame
 _Static_assert(ZTL_PKT_MIN + ZTL_COM_MAX + COM_TAIL <= ZTL_UDP_MAX, "the certificate push fits one datagram");
 _Static_assert(ZTL_PKT_MAX - ZTL_UDP_MAX + ZTL_FRAG_HDR <= ZTL_UDP_MAX, "two datagrams carry the largest packet");
 _Static_assert(ZTL_PEERS <= 255u, "peer index in 8 bits");
+/* RAM budget: all state of the leaf is in struct ztl_leaf. The gate 4,440,
+ * the plain buffer 2,020, the certificate 296, per-peer state 7 * 32,
+ * the public key 64, the rest 92. */
+#if defined(__arm__) && ZTL_PKT_MAX == 2048u && ZTL_PEERS == 7u && ZTL_RX_SLOTS == 2u
+_Static_assert(sizeof(struct ztl_leaf) == 7136u, "leaf RAM on the target changed");
+#endif
 
 static const uint8_t mac_broadcast[ZTL_ETH_ALEN] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 
@@ -1006,35 +1012,50 @@ unsigned int ztl_input(struct ztl_leaf *l, uint8_t *dgram, size_t len, uint32_t 
 		count(&l->stats.rx_lz4);
 		b = l->plain;
 	}
+	/* The reply length stays in a local until the one exit below: no handler
+	 * that makes no reply has a path to *tx_len. */
+	size_t reply = 0;
+	unsigned int r = 0;
+
 	switch (p.verb) {
 	case VERB_HELLO:
-		*tx_len = on_hello(l, i, pkt, b, n, tx);
-		return (*tx_len != 0u) ? ZTL_IN_REPLY : 0u;
+		reply = on_hello(l, i, pkt, b, n, tx);
+		r = (reply != 0u) ? ZTL_IN_REPLY : 0u;
+		break;
 	case VERB_OK:
-		return on_ok(l, i, b, n);
+		r = on_ok(l, i, b, n);
+		break;
 	case VERB_ERROR:
-		return on_error(l, i, b, n);
+		r = on_error(l, i, b, n);
+		break;
 	case VERB_ECHO:
-		*tx_len = on_echo(l, i, pkt, b, n, tx);
-		return (*tx_len != 0u) ? ZTL_IN_REPLY : 0u;
+		reply = on_echo(l, i, pkt, b, n, tx);
+		r = (reply != 0u) ? ZTL_IN_REPLY : 0u;
+		break;
 	case VERB_NETWORK_CONFIG:
 		/* A push, not asked for: from the controller only. */
 		if (i == l->ctrl) {
-			return on_config_chunk(l, b, n, 1);
+			r = on_config_chunk(l, b, n, 1);
+		} else {
+			count(&l->stats.rx_ignored);
 		}
-		count(&l->stats.rx_ignored);
-		return 0;
+		break;
 	case VERB_FRAME:
-		return on_frame(l, i, b, n, frame);
+		r = on_frame(l, i, b, n, frame);
+		break;
 	case VERB_EXT_FRAME:
-		return on_ext_frame(l, i, pkt, b, n, tx, tx_len, frame);
+		r = on_ext_frame(l, i, pkt, b, n, tx, &reply, frame);
+		break;
 	case VERB_MULTICAST_FRAME:
-		return on_multicast_frame(l, i, b, n, frame);
+		r = on_multicast_frame(l, i, b, n, frame);
+		break;
 	default:
 		/* Credentials and subscriptions of peers are not needed (peers
 		 * are admitted by pinning); the other verbs are for roots,
 		 * controllers and bonded links. */
 		count(&l->stats.rx_ignored);
-		return 0;
+		break;
 	}
+	*tx_len = reply;
+	return r;
 }
