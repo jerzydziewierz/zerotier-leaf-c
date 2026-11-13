@@ -21,11 +21,12 @@
 
 /* What the leaf says about itself. Protocol version 11 is the last one
  * without AES; peers then use Salsa20/12 + Poly1305 with this node. The
- * software version is the last stock release that spoke protocol 11. */
+ * software version is this software's own; peers and the controller only
+ * record and show it (the protocol version decides what they send). */
 #define ZTL_PROTO_VERSION 11u
-#define ZTL_VERSION_MAJOR 1u
-#define ZTL_VERSION_MINOR 4u
-#define ZTL_VERSION_REVISION 8u
+#define ZTL_VERSION_MAJOR 0u
+#define ZTL_VERSION_MINOR 0u
+#define ZTL_VERSION_REVISION 1u
 
 #define ZTL_UDP_MAX   1432u /* largest UDP payload sent (ZT_DEFAULT_PHYSMTU of the reference) */
 #define ZTL_PUB_LEN   64u   /* public key of an identity */

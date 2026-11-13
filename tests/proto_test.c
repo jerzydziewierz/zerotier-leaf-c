@@ -414,8 +414,8 @@ static void scenario(void)
 	memcpy(id, g_id, 8);
 	CHECK(r == ZTL_IN_REPLY && g_tx_len == 28 + 9 + 16, "answer to HELLO");
 	CHECK(memcmp(g_tx + 29, id, 8) == 0, "OK(HELLO) does not name the packet it answers");
-	CHECK(g_tx[27] == 0x03 && g_tx[28] == 0x01 && memcmp(g_tx + 37, b + 5, 8) == 0 && g_tx[45] == 11 && g_tx[46] == 1 &&
-		      g_tx[47] == 4 && g_tx[48] == 0 && g_tx[49] == 8 && g_tx[50] == 0 && g_tx[51] == 0 && g_tx[52] == 0,
+	CHECK(g_tx[27] == 0x03 && g_tx[28] == 0x01 && memcmp(g_tx + 37, b + 5, 8) == 0 && g_tx[45] == 11 && g_tx[46] == 0 &&
+		      g_tx[47] == 0 && g_tx[48] == 0 && g_tx[49] == 1 && g_tx[50] == 0 && g_tx[51] == 0 && g_tx[52] == 0,
 	      "OK(HELLO) contents");
 	/* HELLO with another address in its identity: no answer. */
 	b[13] ^= 1;

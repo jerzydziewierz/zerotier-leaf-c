@@ -54,12 +54,12 @@
  * tags (reference controller, EmbeddedNetworkController.cpp: no rules
  * engine revision in the request): this leaf admits peers by pinning and
  * does not evaluate rules. */
-static const char cfg_meta[] = "v=7\nvend=1\npv=b\nmajv=1\nminv=4\nrevv=8";
+static const char cfg_meta[] = "v=7\nvend=1\npv=b\nmajv=0\nminv=0\nrevv=1";
 #define CFG_META_LEN (sizeof(cfg_meta) - 1u)
 #define CFG_REQ_LEN  (ZTL_PKT_MIN + ZTL_NWID_LEN + 2u + CFG_META_LEN + 16u)
 
-_Static_assert(ZTL_PROTO_VERSION == 11u && ZTL_VERSION_MAJOR == 1u && ZTL_VERSION_MINOR == 4u &&
-		       ZTL_VERSION_REVISION == 8u,
+_Static_assert(ZTL_PROTO_VERSION == 11u && ZTL_VERSION_MAJOR == 0u && ZTL_VERSION_MINOR == 0u &&
+		       ZTL_VERSION_REVISION == 1u,
 	       "cfg_meta states the versions as text");
 _Static_assert(ZTL_PKT_MIN + MC_FRAME_HDR + ZTL_MTU_MAX <= ZTL_PKT_MAX, "a frame of the largest MTU fits one packet");
 _Static_assert(ZTL_PKT_MIN + ZTL_COM_MAX + COM_TAIL <= ZTL_UDP_MAX, "the certificate push fits one datagram");
