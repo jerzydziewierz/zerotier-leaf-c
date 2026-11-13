@@ -1,8 +1,25 @@
-# zerotier-leaf-c: a theorem-proved ZeroTier client in C
+# zerotier-leaf-c: a theorem-proved ZeroTier client in C for microcontrollers
 
-This repository holds one thing: an implementation of a ZeroTier protocol v1 client ("leaf" node) in ISO C11 for small microcontrollers, written so that its properties can be machine-checked, together with the proofs. Every function that touches network input has a written contract, and tools (Frama-C WP, CBMC, Frama-C Eva) check the code against it.
+An implementation of a ZeroTier protocol v1 client ("leaf" node) in ISO C11 for small microcontrollers, 
+
+Implemented from wire protocol with verifiable primitives, 
+
+so that its properties can be machine-checked, together with the proofs. 
+
+Every function that touches network input has a written contract, and tools (Frama-C WP, CBMC, Frama-C Eva, Wolfram Mathematica) check the code against it.
 
 ⏭ Work in progress. It runs on a Teensy 4.1 under Zephyr as a member of a private network with a stock controller and stock 1.16.2 peers (ping, Telnet and SSH over the overlay); no soak or rate measurement yet, and the protocol layer has tests but no proofs.
+
+# Why
+
+My concept is that instead of fixing and patching old software, and working through theories and models of C, which are often undecideable, 
+
+We should re-implement it in such a way that they can be checked, and reasoned about.
+
+In the same way in which AI revolution was enabled by reimplementation of restricted (differentiable) function set over real numbers,
+
+We have a restricted set over integers that can be used to implement, maybe not every functionality thinkable, but enough of it to be useful in practice and hold the properties that make it provably correct.
+
 
 ## Part of a bigger work
 
