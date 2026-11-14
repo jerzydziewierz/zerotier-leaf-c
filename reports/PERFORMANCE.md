@@ -43,7 +43,7 @@ Method: an ICMP echo to the board's overlay address and the same echo to its und
   reference_ms_added: 3.28
 - payload_bytes: 600
   leaf_cycles_added: 618,627
-  reference_cycles_added: 1,801,313
+  reference_cycles_added: 1,811,313
   ratio: "2.9"
   leaf_ms_added: 0.96
   reference_ms_added: 2.79

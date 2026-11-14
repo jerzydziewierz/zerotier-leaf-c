@@ -65,7 +65,7 @@ It is unclear if any of these could be used to exploit the original client; rese
 ## What IS proven
 
 Proved by machine for every input, not shown by tests:
-* Frama-C WP with three automatic provers checks each function of the leaf against a written contract, at the full packet size of 2,048 bytes, in a 64-bit and a 32-bit data model (4,296 and 4,301 proof goals, all proved).
+* Frama-C WP with three automatic provers checks each function of the leaf against a written contract, at the full packet size of 2,048 bytes, in a 64-bit and a 32-bit data model (4,306 and 4,311 proof goals, all proved).
 * CBMC checks the datagram classifier a second time, with a different method.
 
 

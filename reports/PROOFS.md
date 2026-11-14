@@ -39,7 +39,7 @@ A "contract" states what must be true before the call (the buffer is readable fo
 
 ## List of proofs
 
-Every statement below is proved by a tool for every input that its contract allows, at the full packet size of 2,048 bytes unless a size is named. "WP" is Frama-C WP with the provers Alt-Ergo, Z3 and CVC5, in a 64-bit and a 32-bit data model, with the checks for run-time errors, unsigned wrap and lossy conversion switched on: 4,296 goals in the 64-bit model and 4,301 in the 32-bit model, all proved. Each part names the chapter of this report with the details and the limits: [classifier](#attempts-on-the-classifier), [reassembly](#attempts-on-reassembly), [receive gate](#attempts-on-the-receive-gate), [cryptography](#attempts-on-the-cryptography), [protocol layer](#attempts-on-the-protocol-layer). What is NOT proved is in the chapter [What all of this does not show](#what-all-of-this-does-not-show).
+Every statement below is proved by a tool for every input that its contract allows, at the full packet size of 2,048 bytes unless a size is named. "WP" is Frama-C WP with the provers Alt-Ergo, Z3 and CVC5, in a 64-bit and a 32-bit data model, with the checks for run-time errors, unsigned wrap and lossy conversion switched on: 4,306 goals in the 64-bit model and 4,311 in the 32-bit model, all proved. Each part names the chapter of this report with the details and the limits: [classifier](#attempts-on-the-classifier), [reassembly](#attempts-on-reassembly), [receive gate](#attempts-on-the-receive-gate), [cryptography](#attempts-on-the-cryptography), [protocol layer](#attempts-on-the-protocol-layer). What is NOT proved is in the chapter [What all of this does not show](#what-all-of-this-does-not-show).
 
 ```yaml
 - part: "Every function in src/ (nine source files, the whole leaf)"
@@ -173,7 +173,7 @@ Every statement below is proved by a tool for every input that its contract allo
         Authentication before effects for the whole leaf: ztl_input() gives a reply packet or a
         frame only after the receive gate made exactly one call of the authentication primitive and
         it answered yes
-      tool: "WP (part of the 1,801 goals of src/leaf.c)"
+      tool: "WP (part of the 1,811 goals of src/leaf.c)"
     - id: L-24
       statement: >-
         After the start (ztl_init(), ztl_pin()) no call writes the node's own address, the table of
@@ -776,7 +776,7 @@ The layer was written and tested first (E-5, E-6), then given contracts (E-9). F
     memory, no wrap, every loop ends.
   tool: "Frama-C WP, both data models, strict flags"
   result: >-
-    ✅ 1,801 of 1,801 goals (32-bit model: 1,807 of 1,807). The first run with contracts proved 1,751
+    ✅ 1,811 of 1,811 goals (32-bit model: 1,817 of 1,817). The first run with contracts proved 1,751
     of 1,759; the rest needed the packet ID statement on three answer functions, the reassembly
     start contract in the header, and one change of the code (F-34). Ten deliberate errors against
     these proofs rejected by WP (packet ID not advanced, two IDs for one answer, answer without a
