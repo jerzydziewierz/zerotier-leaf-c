@@ -207,6 +207,29 @@ Every statement below is proved by a tool for every input that its contract allo
         destination, then exactly the bytes that the first datagram did not carry; both fit 1,432
         bytes
       tool: "WP"
+- part: "Parse after build (theorem T4), for what the leaf both builds and parses"
+  chapter: "proofs/roundtrip_wp.c; contracts of finish() and of ztl_poll(), ztl_frame_to()"
+  proved:
+    - id: L-30
+      statement: >-
+        Every packet that ztl_poll() or ztl_frame_to() sends carries in its header the packet ID
+        that the call took, the destination peer, this node as the source, and a flags byte with
+        "fragmented" exactly when the packet needs two datagrams; a frame from the host always goes
+        out encrypted (cipher suite 1)
+      tool: "WP"
+    - id: L-31
+      statement: >-
+        The first datagram of every such packet is read back by ztl_classify() as a head with the
+        same packet ID, destination, source, cipher suite and "fragmented" flag (needs an own address
+        that does not start with the reserved byte 0xff: a precondition of ztl_init())
+      tool: "WP"
+    - id: L-32
+      statement: >-
+        A packet of 1,433 to 2,048 bytes with such a header, sent in two datagrams as the adapter
+        sends it, gives two datagrams with the same packet ID and destination, and the reassembly
+        gives back exactly the bytes that were sent, in both orders of arrival (at the level of the
+        reassembly slot, as L-10)
+      tool: "WP"
 ```
 
 Each proof holds under these assumptions: the caller meets the stated preconditions (valid, separate buffers); the tools' model of C (no notion of reading memory that was never written; pointer alignment not checked); the compiler and the hardware are correct. The contracts are written by hand: 102 deliberate errors in the code (114 tool runs), each rejected by the tool named for it, are the guard against contracts that say too little (A-6, B-6, C-4, D-9, E-7).

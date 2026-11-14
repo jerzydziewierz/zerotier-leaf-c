@@ -61,7 +61,19 @@ Each item is closed with one line: what was tried, on which code, the result, an
     (test vectors from the reference, V-10); a replayed packet passes again (V-3)
 - id: T4
   statement: "Parse and serialise are inverse for every accepted message"
-  status: "🔴"
+  scope: >-
+    Narrowed (2026-11-14) to what the leaf both builds and parses. Messages that the leaf only builds
+    (configuration request, certificate, subscription) or only parses (configuration dictionary,
+    LZ4) have no inverse here: "the leaf parses what the reference builds" is tested by the vectors
+    and the interop runs, not proved
+  status: >-
+    🔄 Proved for the packet header and for the split into two datagrams (L-30 to L-32 in
+    `reports/PROOFS.md`, `proofs/roundtrip_wp.c`): what ztl_poll() and ztl_frame_to() send is read
+    back with the same packet ID, destination, source, cipher suite and "fragmented" flag, and a
+    long packet comes back byte for byte from both orders of arrival. 🌱 Next: the payload of FRAME
+    and EXT_FRAME (build, then parse gives the same Ethernet frame) and of HELLO. 🔴 Open: open after
+    seal gives the plaintext back (needs value contracts for Salsa20/12 and Poly1305; TODO Z-49);
+    the joined bytes through ztl_reasm_input() as a whole (its contract does not state them)
 - id: T5
   statement: "Functions never crashes or raises exception for any input"
   status: >-
