@@ -144,8 +144,7 @@ Each item is closed with one line: what was tried, on which code, the result, an
     public key 64, rest 92). The gate is `struct ztl_node`, pinned in `src/rx.c` (own address and
     padding 6, peers 7 × 38 = 266, reassembly 2 × 2,072 = 4,144, counters 24). Stack, from
     `-fstack-usage` and the call graph by hand: 456 B below the gate (`ztl_rx` 96, `ztl_auth_open`
-    72, then key stream 288 or tag 272), `ztl_input` 80 B above it. Zephyr module in a firmware
-    build: 15,800 B with thread stack (3,136) and buffers (packet 2,048, frame 1,500, datagram
+    72, then key stream 288 or tag 272), `ztl_input` 80 B above it. Zephyr module in a firmware build: 15,832 B with thread stack (3,136) and buffers (packet 2,048, frame 1,500, datagram
     1,473). 🌱 call-graph tool instead of the hand sum (V-12)
 - id: D-5
   item: >-

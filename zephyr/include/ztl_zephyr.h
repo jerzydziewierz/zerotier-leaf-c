@@ -37,6 +37,12 @@ struct ztl_zephyr_status {
 	struct ztl_stats leaf;
 	struct ztl_rx_stats gate;
 	uint8_t peers_seen; /* peers that are reachable now */
+	/* Time inside the leaf, in cycles of the system clock (cycles_per_sec), with whatever
+	 * interrupted it: ztl_input() for each datagram from a pinned endpoint, and
+	 * ztl_frame_to() for each packet built from a frame of the host. */
+	uint32_t cycles_per_sec;
+	uint32_t in_calls, in_avg, in_max;
+	uint32_t out_calls, out_avg, out_max;
 };
 
 /*

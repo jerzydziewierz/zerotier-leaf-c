@@ -41,8 +41,11 @@ static int sock = -1;
 static uint16_t local_port;
 static atomic_t running, usable;
 static atomic_t wire_tx, wire_rx, rx_filtered, tx_dropped, rx_dropped;
-static struct net_in_addr have_ip; /* address on the interface now, or 0 */
-static uint8_t have_prefix;        /* and its network part, in bits */
+static struct net_in_addr have_ip; /* address on the interface now, or 0; leaf thread only */
+static uint8_t have_prefix;        /* and its network part, in bits; leaf thread only */
+/* Time in the leaf, in cycles of the system clock; guarded by lock. */
+static uint64_t in_cycles, out_cycles;
+static uint32_t in_calls, out_calls, in_max, out_max;
 static uint8_t placeholder_mac[ZTL_ETH_ALEN] = { 0x02, 0x5a, 0x54, 0x4c, 0x00, 0x01 };
 
 K_THREAD_STACK_DEFINE(ztl_stack, CONFIG_ZTL_WORKER_STACK_SIZE);
@@ -78,57 +81,68 @@ static void overlay_down(void)
 	}
 }
 
-/* Make the interface agree with the configuration of the leaf. Lock held. */
-static void apply_config(void)
-{
-	struct net_in_addr ip, mask;
+/* What the interface needs from the configuration of the leaf: copied under the lock. */
+struct overlay_config {
+	struct net_in_addr ip;
+	uint16_t mtu;
+	uint8_t prefix; /* 0: no configuration or no address */
+};
 
-	if (leaf.have_config == 0u || leaf.prefix == 0u) {
+/* Make the interface agree with the configuration. Leaf thread, WITHOUT the lock:
+ * the calls take locks of the network stack. */
+static void apply_config(const struct overlay_config *c)
+{
+	const struct net_in_addr ip = c->ip;
+	struct net_in_addr mask;
+
+	if (c->prefix == 0u) {
 		overlay_down();
 		return;
 	}
-	memcpy(&ip.s_addr, leaf.ip, 4);
-	if (atomic_get(&usable) && ip.s_addr == have_ip.s_addr && leaf.prefix == have_prefix &&
-	    net_if_get_mtu(overlay) == leaf.mtu) {
+	if (atomic_get(&usable) && ip.s_addr == have_ip.s_addr && c->prefix == have_prefix &&
+	    net_if_get_mtu(overlay) == c->mtu) {
 		return;
 	}
 	overlay_down();
-	net_if_set_mtu(overlay, leaf.mtu);
+	net_if_set_mtu(overlay, c->mtu);
 	if (net_if_ipv4_addr_add(overlay, &ip, NET_ADDR_MANUAL, 0) == NULL) {
 		return;
 	}
 	have_ip = ip;
-	have_prefix = leaf.prefix;
-	mask.s_addr = net_htonl(UINT32_MAX << (32u - leaf.prefix));
+	have_prefix = c->prefix;
+	mask.s_addr = net_htonl(UINT32_MAX << (32u - c->prefix));
 	(void)net_if_ipv4_set_netmask_by_addr(overlay, &ip, &mask);
 	net_if_carrier_on(overlay);
 	(void)net_if_up(overlay);
 	atomic_set(&usable, 1);
 }
 
-/* Give one frame from a peer to the network stack. Lock held (f->data can point into the leaf). */
-static void deliver(const struct ztl_frame *f)
+/* Copy one frame from a peer into a packet of the network stack. Lock held (f->data
+ * can point into the leaf). The caller gives the packet to the stack after it has
+ * released the lock. Returns NULL if there is no packet to give. */
+static struct net_pkt *frame_to_pkt(const struct ztl_frame *f)
 {
 	uint8_t hdr[ETH_HDR];
 	struct net_pkt *pkt;
 
 	if (!atomic_get(&usable) || (f->ethertype != ETH_IPV4 && f->ethertype != ETH_ARP)) {
 		atomic_inc(&rx_dropped);
-		return;
+		return NULL;
 	}
 	pkt = net_pkt_rx_alloc_with_buffer(overlay, ETH_HDR + f->len, NET_AF_UNSPEC, 0, K_NO_WAIT);
 	if (pkt == NULL) {
 		atomic_inc(&rx_dropped);
-		return;
+		return NULL;
 	}
 	memcpy(hdr, f->dst, ZTL_ETH_ALEN);
 	memcpy(&hdr[ZTL_ETH_ALEN], f->src, ZTL_ETH_ALEN);
 	sys_put_be16(f->ethertype, &hdr[2u * ZTL_ETH_ALEN]);
-	if (net_pkt_write(pkt, hdr, sizeof(hdr)) != 0 || net_pkt_write(pkt, f->data, f->len) != 0 ||
-	    net_recv_data(overlay, pkt) < 0) {
+	if (net_pkt_write(pkt, hdr, sizeof(hdr)) != 0 || net_pkt_write(pkt, f->data, f->len) != 0) {
 		net_pkt_unref(pkt);
 		atomic_inc(&rx_dropped);
+		return NULL;
 	}
+	return pkt;
 }
 
 /* Is this datagram from the pinned endpoint of a peer? */
@@ -177,19 +191,38 @@ static void worker(void *a, void *b, void *c)
 				continue;
 			}
 			atomic_inc(&wire_rx);
-			k_mutex_lock(&lock, K_FOREVER);
-			const unsigned int r = ztl_input(&leaf, rx_buf, (size_t)got, k_uptime_get_32(), tx_buf, &tx_len, &peer, &frame);
+			struct overlay_config cfg = { 0 };
+			struct net_pkt *up = NULL;
 
+			k_mutex_lock(&lock, K_FOREVER);
+			const uint32_t t0 = k_cycle_get_32();
+			const unsigned int r = ztl_input(&leaf, rx_buf, (size_t)got, k_uptime_get_32(), tx_buf, &tx_len, &peer, &frame);
+			const uint32_t dt = k_cycle_get_32() - t0;
+
+			in_cycles += dt;
+			in_calls++;
+			in_max = MAX(in_max, dt);
 			if ((r & ZTL_IN_REPLY) != 0u) {
 				send_packet(peer, tx_len);
 			}
-			if ((r & ZTL_IN_CONFIG) != 0u) {
-				apply_config();
+			if ((r & ZTL_IN_CONFIG) != 0u && leaf.have_config != 0u && leaf.prefix != 0u) {
+				memcpy(&cfg.ip.s_addr, leaf.ip, 4);
+				cfg.mtu = leaf.mtu;
+				cfg.prefix = leaf.prefix;
 			}
 			if ((r & ZTL_IN_FRAME) != 0u) {
-				deliver(&frame);
+				up = frame_to_pkt(&frame);
 			}
 			k_mutex_unlock(&lock);
+			/* Calls into the network stack that take its locks: after the lock of the leaf
+			 * is released, so that the two are never held in this order. */
+			if ((r & ZTL_IN_CONFIG) != 0u) {
+				apply_config(&cfg);
+			}
+			if (up != NULL && net_recv_data(overlay, up) < 0) {
+				net_pkt_unref(up);
+				atomic_inc(&rx_dropped);
+			}
 		}
 		/* A source that sends without pause must not keep other threads from running. */
 		k_yield();
@@ -221,9 +254,14 @@ static int ztl_dev_send(const struct device *dev, struct net_pkt *pkt)
 			/* A frame to a group address goes to every reachable peer, a
 			 * frame to one address to the peer that owns it. */
 			for (unsigned int i = 0; i < ZTL_PEERS; i++) {
+				const uint32_t t0 = k_cycle_get_32();
 				const size_t len = ztl_frame_to(&leaf, i, hdr, ethertype, frame_buf, n - ETH_HDR, tx_buf);
+				const uint32_t dt = k_cycle_get_32() - t0;
 
 				if (len != 0u) {
+					out_cycles += dt;
+					out_calls++;
+					out_max = MAX(out_max, dt);
 					send_packet(i, len);
 				}
 			}
@@ -355,6 +393,13 @@ void ztl_zephyr_get_status(struct ztl_zephyr_status *s)
 	s->peers_seen = 0;
 	k_mutex_lock(&lock, K_FOREVER);
 	s->leaf = leaf.stats;
+	s->cycles_per_sec = sys_clock_hw_cycles_per_sec();
+	s->in_calls = in_calls;
+	s->in_avg = (in_calls != 0u) ? (uint32_t)(in_cycles / in_calls) : 0u;
+	s->in_max = in_max;
+	s->out_calls = out_calls;
+	s->out_avg = (out_calls != 0u) ? (uint32_t)(out_cycles / out_calls) : 0u;
+	s->out_max = out_max;
 	s->gate = leaf.node.rx;
 	for (unsigned int i = 0; i < ZTL_PEERS; i++) {
 		if (leaf.node.peer[i].pinned && leaf.ps[i].seen != 0u) {

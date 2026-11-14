@@ -18,6 +18,8 @@ static int cmd_status(const struct shell *sh, size_t argc, char **argv)
 	shell_print(sh, "leaf lz4=%u bad_lz4=%u bad_form=%u no_config=%u ignored=%u frames=%u tx_packets=%u configs=%u config_bad=%u",
 		    s.leaf.rx_lz4, s.leaf.rx_bad_lz4, s.leaf.rx_bad_form, s.leaf.rx_no_config, s.leaf.rx_ignored,
 		    s.leaf.rx_frames, s.leaf.tx_packets, s.leaf.configs, s.leaf.config_bad);
+	shell_print(sh, "cycles (%u per second): ztl_input calls=%u avg=%u max=%u; ztl_frame_to packets=%u avg=%u max=%u",
+		    s.cycles_per_sec, s.in_calls, s.in_avg, s.in_max, s.out_calls, s.out_avg, s.out_max);
 	shell_print(sh, "ram: leaf %u bytes", (unsigned int)sizeof(struct ztl_leaf));
 	return 0;
 }

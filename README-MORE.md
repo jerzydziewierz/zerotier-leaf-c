@@ -7,7 +7,7 @@ This is one part of a larger project: ZeroTier overlay networking on the Zephyr 
   where: "https://github.com/jerzydziewierz/zephyr-zerotier-leaf"
   what: >-
     Restricted ZeroTier One 1.16.2 C++ core as a Zephyr module, tested on hardware with stock
-    ZeroTier peers. About 115 KB of added RAM and 454 KB of added code (see "Status").
+    ZeroTier peers. About 115 KB of added RAM and 449 KB of added code (see "Status").
 - part: "This repository"
   where: "`zerotier-leaf-c`"
   what: >-
@@ -79,26 +79,28 @@ Paths such as `../grey_zerotier/` and `../dl/sdk/` in scripts and documents poin
   file: "`zephyr/`"
   state: >-
     ⏭ runs on the Teensy 4.1 (first run 2026-11-13: member of a network with a stock controller and
-    stock peers; ping, Telnet and SSH sessions); no proof, no test of its own, no soak
+    stock peers; ping, Telnet and SSH sessions); no proof, no test of its own; calls into the network stack are made without the leaf's lock
 ```
 
-Deliberate errors (mutation step): 102 errors in 114 tool runs, every one rejected by the tool that should see it. Measured in a firmware build for the Cortex-M7 (Zephyr's compiler options; the runner's own build of the nine files gives 7,688): code of the leaf 7,694 bytes, Zephyr adapter 2,100 bytes; RAM of the leaf 7,136 bytes (`struct ztl_leaf`), of the whole Zephyr module 15.8 KB with its thread stack and three packet buffers.
+Deliberate errors (mutation step): 102 errors in 114 tool runs, every one rejected by the tool that should see it. Measured in a firmware build for the Cortex-M7 (Zephyr's compiler options; the runner's own build of the nine files gives 7,688): code of the leaf 7,694 bytes, Zephyr adapter 2,364 bytes; RAM of the leaf 7,136 bytes (`struct ztl_leaf`), of the whole Zephyr module 15.8 KB with its thread stack and three packet buffers.
 
 Size against the reference solution, measured in one application (Teensy 4.1, Zephyr 4.4.2, `-Os`; the same application built without ZeroTier, with this leaf, and with the reference module; 2026-11-14). "Added" is the difference to the build without ZeroTier; RAM is initialised data plus zeroed memory.
 
 ```yaml
 - solution: "this leaf (C, with its Zephyr adapter and shell command)"
-  code_added_bytes: 11,260
-  ram_added_bytes: 20,180
+  code_added_bytes: 11,692
+  ram_added_bytes: 20,212
   ram_holds: "leaf state 7,136; thread stack 3 KB; packet, frame and datagram buffers 5 KB; 4.4 KB outside the module, not broken down"
 - solution: "reference (restricted ZeroTier One 1.16.2 core in C++, with its Zephyr adapter and shell command)"
-  code_added_bytes: 453,760
-  ram_added_bytes: 115,248
+  code_added_bytes: 448,928
+  ram_added_bytes: 115,052
   ram_holds: "heap 64 KB; worker stack 26 KB; queues and tables"
-- ratio: "the leaf adds 1/40 of the code and 1/5.7 of the RAM"
+- ratio: "the leaf adds 1/38 of the code and 1/5.7 of the RAM"
 ```
 
-The reference build has IPv6 in the network stack, because its module needs that option to build (it then switches IPv6 off on its interface); its figures are against a build without ZeroTier that has IPv6 too, so the cost of IPv6 (15,384 bytes of code, 1,724 of RAM) is in neither column. The reference figures include the C++ run-time library that only the reference needs.
+All three builds have IPv4 only. The reference figures include the C++ run-time library that only the reference needs.
+
+Time inside the leaf on the board (i.MX RT1062 at 600 MHz, code in flash, counted around each call, interrupts included; 3,000 echoes for each size): to open, check and hand over one received frame, `ztl_input()` takes 45,000 cycles at 16 payload bytes and 113,000 at 1,252 (75 to 190 µs); to build and seal one packet from a frame, `ztl_frame_to()` takes 30,000 and 97,000 (50 to 160 µs). That is about 55 cycles for each byte in each direction.
 
 "Proved" here means: the code meets its written contract, for the tools' model of C. It does not mean that the contract is the right one, that the compiler is correct, or anything about timing. [reports/PROOFS.md](reports/PROOFS.md) lists every check and proof attempted, in plain words, with what each one does not show, and the attempts that failed.
 
