@@ -228,6 +228,17 @@ static void poly_finish(uint8_t *tag, const uint32_t h[5], const uint8_t *pad)
 	/*@ assert j_value: ZTL_VAL5(j0 % ZTL_2P26, j1 % ZTL_2P26, j2 % ZTL_2P26, j3 % ZTL_2P26, j4 % ZTL_2P26) ==
 	  @   ZTL_VAL5(c0, c1, c2, c3, c4) + 5 - take_j * (ZTL_P1305 + 5); */
 	const uint32_t take_c = 1u - take_j;
+	/* The two cases of the selection, so that each step below is linear arithmetic. */
+	/*@ assert case_c: take_j == 0 ==> take_c == 1 &&
+	  @   c0 * take_c == c0 && c1 * take_c == c1 && c2 * take_c == c2 && c3 * take_c == c3 &&
+	  @   c4 * take_c == c4 && (j0 % ZTL_2P26) * take_j == 0 && (j1 % ZTL_2P26) * take_j == 0 &&
+	  @   (j2 % ZTL_2P26) * take_j == 0 && (j3 % ZTL_2P26) * take_j == 0 &&
+	  @   (j4 % ZTL_2P26) * take_j == 0; */
+	/*@ assert case_j: take_j == 1 ==> take_c == 0 &&
+	  @   c0 * take_c == 0 && c1 * take_c == 0 && c2 * take_c == 0 && c3 * take_c == 0 &&
+	  @   c4 * take_c == 0 && (j0 % ZTL_2P26) * take_j == j0 % ZTL_2P26 &&
+	  @   (j1 % ZTL_2P26) * take_j == j1 % ZTL_2P26 && (j2 % ZTL_2P26) * take_j == j2 % ZTL_2P26 &&
+	  @   (j3 % ZTL_2P26) * take_j == j3 % ZTL_2P26 && (j4 % ZTL_2P26) * take_j == j4 % ZTL_2P26; */
 
 	/* Selection by multiplication with 0 or 1: no branch on secret data. */
 	const uint32_t v0 = c0 * take_c + (j0 % P26) * take_j;
@@ -253,6 +264,7 @@ static void poly_finish(uint8_t *tag, const uint32_t h[5], const uint8_t *pad)
 	/* Add pad with carry from word to word; the carry out of word 3 is dropped. */
 	const uint32_t p0 = ztl_le32(&pad[0]), p1 = ztl_le32(&pad[4]), p2 = ztl_le32(&pad[8]),
 		       p3 = ztl_le32(&pad[12]);
+	/*@ assert pad_frame_read: \forall integer i; 0 <= i < 16 ==> pad[i] == \at(pad[i], Pre); */
 	/*@ assert pad_words: p0 + p1 * ZTL_2P32 + p2 * ZTL_2P64 + p3 * ZTL_2P96 == ZTL_LE128(pad); */
 	const uint64_t f0 = (uint64_t)w0 + p0;
 	const uint64_t f1 = (uint64_t)w1 + p1 + f0 / UINT64_C(4294967296);
@@ -264,8 +276,11 @@ static void poly_finish(uint8_t *tag, const uint32_t h[5], const uint8_t *pad)
 	  @    (p0 + p1 * ZTL_2P32 + p2 * ZTL_2P64 + p3 * ZTL_2P96)) % ZTL_2P128; */
 
 	ztl_put_le32(&tag[0], (uint32_t)(f0 % UINT64_C(4294967296)));
+	/*@ assert pad_frame_put0: \forall integer i; 0 <= i < 16 ==> pad[i] == \at(pad[i], Pre); */
 	ztl_put_le32(&tag[4], (uint32_t)(f1 % UINT64_C(4294967296)));
+	/*@ assert pad_frame_put1: \forall integer i; 0 <= i < 16 ==> pad[i] == \at(pad[i], Pre); */
 	ztl_put_le32(&tag[8], (uint32_t)(f2 % UINT64_C(4294967296)));
+	/*@ assert pad_frame_put2: \forall integer i; 0 <= i < 16 ==> pad[i] == \at(pad[i], Pre); */
 	ztl_put_le32(&tag[12], (uint32_t)(f3 % UINT64_C(4294967296)));
 	/*@ assert stored: ZTL_LE128(tag) == f0 % ZTL_2P32 + (f1 % ZTL_2P32) * ZTL_2P32 +
 	  @   (f2 % ZTL_2P32) * ZTL_2P64 + (f3 % ZTL_2P32) * ZTL_2P96; */
