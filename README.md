@@ -74,6 +74,8 @@ Proved by machine for every input, not shown by tests: Frama-C WP with three aut
 
 The proofs notice wrong code: 102 deliberate errors were put into the sources, one at a time, and each was rejected by the tool that should see it.
 
+Approximate cost of running the proofs: one full default run (`proofs/on-remote.sh start`, which runs `proofs/run.sh`) takes about 32 minutes on a 32-core Linux host, with a memory peak of 5 GB; nearly all of it is WP in the two data models and the smoke step. The whole list of deliberate errors (`mutate`) takes about 2 hours more.
+
 ## NOT proven, but still tested
 
 Shown only by tests against the reference implementation: 
