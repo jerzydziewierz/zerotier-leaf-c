@@ -10,6 +10,13 @@
 #include <stdlib.h>
 #include "ztl/wire.h"
 
+/* Reachability targets are active only in a cover run (-DH_COVER --cover cover). */
+#ifdef H_COVER
+#define COVER(c) __CPROVER_cover(c)
+#else
+#define COVER(c) ((void)0)
+#endif
+
 size_t nondet_size(void);
 struct ztl_view nondet_view(void);
 
@@ -116,16 +123,16 @@ int main(void)
 	}
 
 	/* Reachability: each must be coverable, or the checks above are vacuous. */
-	__CPROVER_cover(k == ZTL_DROP && len == 0u);
-	__CPROVER_cover(k == ZTL_DROP && len == ZTL_PKT_MAX + 1u);
-	__CPROVER_cover(k == ZTL_HEAD && len == ZTL_PKT_MIN);
-	__CPROVER_cover(k == ZTL_HEAD && len == ZTL_PKT_MAX && v.cipher == 1u && v.fragmented);
-	__CPROVER_cover(k == ZTL_FRAGMENT && len == ZTL_FRAG_MIN);
-	__CPROVER_cover(k == ZTL_DROP && len == ZTL_FRAG_HDR && buf[13] == 0xffu && buf[14] == 0x21u);
-	__CPROVER_cover(k == ZTL_DROP && r == REF_HEAD_EXT_ARMOR);
-	__CPROVER_cover(k == ZTL_DROP && r == REF_HEAD_AES_GMAC);
-	__CPROVER_cover(k == ZTL_HEAD && buf[18] == 0x88u); /* suite 1 with the old "encrypted" flag */
-	__CPROVER_cover(k == ZTL_HEAD && v.cipher == 0u);
-	__CPROVER_cover(k == ZTL_FRAGMENT && len == ZTL_PKT_MAX);
+	COVER(k == ZTL_DROP && len == 0u);
+	COVER(k == ZTL_DROP && len == ZTL_PKT_MAX + 1u);
+	COVER(k == ZTL_HEAD && len == ZTL_PKT_MIN);
+	COVER(k == ZTL_HEAD && len == ZTL_PKT_MAX && v.cipher == 1u && v.fragmented);
+	COVER(k == ZTL_FRAGMENT && len == ZTL_FRAG_MIN);
+	COVER(k == ZTL_DROP && len == ZTL_FRAG_HDR && buf[13] == 0xffu && buf[14] == 0x21u);
+	COVER(k == ZTL_DROP && r == REF_HEAD_EXT_ARMOR);
+	COVER(k == ZTL_DROP && r == REF_HEAD_AES_GMAC);
+	COVER(k == ZTL_HEAD && buf[18] == 0x88u); /* suite 1 with the old "encrypted" flag */
+	COVER(k == ZTL_HEAD && v.cipher == 0u);
+	COVER(k == ZTL_FRAGMENT && len == ZTL_PKT_MAX);
 	return 0;
 }

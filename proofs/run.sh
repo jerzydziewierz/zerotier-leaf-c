@@ -56,7 +56,7 @@ for t in "${tools[@]}"; do
 		--conversion-check --div-by-zero-check --undefined-shift-check --unwinding-assertions > $o 2>&1
 		s=$?; grep -q '^VERIFICATION SUCCESSFUL$' $o || s=1
 		grep -qE '^\*\* 0 of [1-9][0-9]* failed' $o || s=1 ;;
-	cover) $LIM cbmc $CBMC_SRC --cover cover > $o 2>&1
+	cover) $LIM cbmc -DH_COVER $CBMC_SRC --cover cover > $o 2>&1
 		s=$?; grep -qE '^\*\* ([1-9][0-9]*) of \1 covered' $o || s=1 ;;
 	eva) $LIM $FC src/wire.c proofs/wire_eva.c -eva -eva-precision 5 > $o 2>&1
 		s=$?
