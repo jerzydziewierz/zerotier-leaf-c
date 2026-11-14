@@ -1,12 +1,12 @@
 # C leaf: cost of a network MTU above 1500 (strand ztram, s6)
 
-**Decision (Grey, 2026-11-14): the MTU stays as it is (leaf takes 1280..1500). Revisit only if it becomes a problem.**
+**Decision (GRey, 2026-11-14): the MTU stays as it is (leaf takes 1280..1500). Revisit only if it becomes a problem.**
 
 State 2026-11-14. Read-only analysis of `` at `13503c9`, the stock ZeroTier One 1.16.2 core (`from-source/ZeroTierOne`, git `HEAD`; the working tree there has `GREY_ZT_EMBEDDED` changes, so stock lines are cited from `git show HEAD:<file>`), and Zephyr main in `from-source/zephyr-main-ws/zephyr` with the build `build-app-leaf`. No prover ran, nothing was built for the board. Sizes of structures come from a compile of `sizeof` with the target compiler (`arm-zephyr-eabi-gcc -mcpu=cortex-m7`). Tags: [CODE] read in source, [ARITH] computed from code or measured constants, [GUESS] judgement not yet checked.
 
 ## 1. Answer in short
 
-Grey's hope is half right. A larger network MTU does NOT reduce ZeroTier-layer reassembly in the leaf: at the lab MTU of 1280 no frame is ever cut into ZeroTier fragments, at 2800 every received frame above 1394 bytes is. It DOES move the threshold for IP-layer reassembly (which the board does not do) from 1280 to 2800 bytes, but only if the leaf's own interface also takes 2800. On the send side (the sensor stream) the leaf never reassembles at any MTU; it only cuts a packet in two, which costs a 16-byte header write. A larger MTU helps the sender by fewer frames per byte and a little less overhead, not by less reassembly.
+GRey's hope is half right. A larger network MTU does NOT reduce ZeroTier-layer reassembly in the leaf: at the lab MTU of 1280 no frame is ever cut into ZeroTier fragments, at 2800 every received frame above 1394 bytes is. It DOES move the threshold for IP-layer reassembly (which the board does not do) from 1280 to 2800 bytes, but only if the leaf's own interface also takes 2800. On the send side (the sensor stream) the leaf never reassembles at any MTU; it only cuts a packet in two, which costs a 16-byte header write. A larger MTU helps the sender by fewer frames per byte and a little less overhead, not by less reassembly.
 
 Full support of 2800 costs about 4.5 KB of leaf and adapter RAM plus 1.6 KB to 14 KB of Zephyr buffer pools, small code changes, one contract change, and a re-run of WP and the mutation list. The cheaper option (take a 2800 network, keep the own MTU at 1500) costs 0 bytes and about two lines, and leaves UDP/ICMP of 1473 to 2772 payload bytes from peers silently lost.
 
@@ -101,7 +101,7 @@ As a stated limit this is acceptable for a node that mostly sends [GUESS]: it is
 
 - C: Zephyr IPv4 reassembly, `CONFIG_NET_IPV4_FRAGMENT=y` with `NET_IPV4_FRAGMENT_MAX_COUNT` (default 1), `NET_IPV4_FRAGMENT_MAX_PKT` (default 2), `NET_IPV4_FRAGMENT_TIMEOUT` (default 5 s) (`subsys/net/ip/Kconfig.ipv4:174-224`). Independent of the leaf and of the MTU: it removes the IP-layer limit for any size (fragments × MTU), and lets the board send UDP larger than its MTU. RAM: one `struct net_ipv4_reassembly` per slot (`ipv4.h:339-354`, small) plus the RX buffers that the waiting fragments hold. Code: Zephyr's own, not proved; it runs only on frames that passed the leaf's gate, so only a pinned peer can feed it. [CODE; code size GUESS, not built]
 - D: option A with the clamp of 3.1 (accept 1280..10000, use up to 2800). This is my preferred form of A: no network is refused, the deployer changes nothing.
-- E (reference point, not what Grey asked): MTU 1394 on the controller makes every `FRAME` one datagram (38 + 1,394 = 1,432). It is the best send efficiency without any fragment, but it is again a controller setting.
+- E (reference point, not what GRey asked): MTU 1394 on the controller makes every `FRAME` one datagram (38 + 1,394 = 1,432). It is the best send efficiency without any fragment, but it is again a controller setting.
 - B+: in option B, answer a too-long frame with ICMP "fragmentation needed" (MTU 1500). The peer then cuts at 1500 at IP level, which the board can join only with option C. Not worth it alone. [GUESS]
 
 ## 6. Proof and test work (question 4)
@@ -142,7 +142,7 @@ WP proves each function against contracts written with the symbolic constants, s
 - item: "Reference test node grey_zerotier/tests/host_node.cpp:22, :167, :275 (workspace, not the public repo)"
   option_A: "frame buffer 2800, network MTU from the environment instead of 1500; reference_node is the stock core (tests/CMakeLists.txt:6, 22), so it sends 2800 frames"
   option_B: "network MTU 2800"
-- item: "Board check (needs Grey's authorization to flash)"
+- item: "Board check (needs GRey's authorization to flash)"
   option_A: "ping -s 1400 and -s 2772 from a stock peer; UDP stream of 2772-byte payloads from the board; TX buffer use with CONFIG_NET_BUF_POOL_USAGE"
   option_B: "ping -s 1472 passes, -s 1473 is dropped and counted"
 - item: "Documents"
@@ -181,7 +181,7 @@ D: take any network MTU, use up to 2800, raise `CONFIG_NET_BUF_TX_COUNT` to at l
 
 Do not expect less ZeroTier-layer reassembly from any of these: at 2800 the receive path joins two parts for every frame above 1,394 bytes, and the reassembly code (proved, two slots) carries more of the traffic than at 1280.
 
-## 10. Questions for Grey
+## 10. Questions for GRey
 
 - ❓ Q-ztram-mtu-1: Did "reassemble" mean the IP layer (Zephyr cannot join IP fragments) or the leaf's ZeroTier reassembly? Section 2 says MTU 2800 helps the first and adds to the second.
 - ❓ Q-ztram-mtu-2: Option D (full 2800 with clamp) or option B (accept 2800, stay at 1500) first?

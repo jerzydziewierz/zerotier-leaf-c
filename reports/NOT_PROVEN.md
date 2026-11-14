@@ -81,8 +81,8 @@ Proved: no reply and no frame leaves `ztl_input()` without the gate's yes (L-23)
 
 Proved: nothing.
 
-- [ ] **N-26 ⚠️ Everything.** Threads and the one mutex, the order of locks against the network stack, ownership of packet buffers, the socket, the set-up of the interface. Stands in: runs on one board (ping, Telnet, SSH, echo sweeps and a soak without loss). No test of its own.
-- [ ] **N-27 One call at a time.** Every proof of the core is about one call that nothing interrupts. That the adapter never makes two calls at once rests on its mutex, by reading.
+- [ ] **N-26 ⚠️ The adapter itself.** Threads and the one mutex, the order of locks against the network stack, ownership of packet buffers, the socket, the set-up of the interface. Proved for a model only ([L-33 to L-35](PROOFS.md#list-of-proofs), `proofs/vf`): the model mirrors the adapter by hand, and a change of the adapter does not break that proof. Not in the model: the atomic flags, buffer contents, the locks of the network stack itself (no proof of freedom from deadlock). Stands in for the real file: runs on one board (ping, Telnet, SSH, echo sweeps and a soak without loss). No test of its own.
+- [ ] **N-27 One call at a time.** Every proof of the core is about one call that nothing interrupts. That the adapter never makes two calls at once rests on its mutex: proved for the model of the adapter (L-33), by reading for the real file.
 - [ ] **N-28 Not ported from the reference adapter:** private packet pools, learning of peers' Ethernet addresses from authenticated frames, a check that overlay and underlay subnets do not overlap. Behaviour under flood is not measured.
 
 ## 11. Provisioning (`tools/provision/`)

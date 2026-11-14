@@ -11,7 +11,7 @@ The reference solution is `../grey_zerotier/` (public: `../grey-zerotier-public/
 
 Work and progress markers:
 
-❓ = Question for Grey to answer
+❓ = Question for GRey to answer
 🥦 = Hypothesis, idea for consideration
 💡 = Finding, observation, information
 🔴 = Not ready to start
@@ -177,7 +177,7 @@ Each item is closed with one line: what was tried, on which code, the result, an
     Default is false (`service/OneService.cpp:2901`). Do not enable it at peers of the leaf. ⚠️ Flag
     bit 7 with suite 1 is the old "encrypted" flag, set by every peer up to 1.14 on each encrypted
     packet: accept it. ⚠️ Peers choose the suite from the learned version; incoming AES packets are
-    still possible and the classifier drops them. Grey accepts the loss of encrypted HELLO and
+    still possible and the classifier drops them. GRey accepts the loss of encrypted HELLO and
     ephemeral keying (A-ztram-s2-16). ✅ The C leaf itself now runs on the board network (D-6). 🌱 Cycles per packet
     (AES-GMAC-SIV is today's main cost, ≈ 1 M cycles per packet).
   status: "🔄"
@@ -199,7 +199,7 @@ Each item is closed with one line: what was tried, on which code, the result, an
     checks the annotations themselves (P-16)
 - id: D-8
   item: >-
-    No public-key cryptography on the device (Grey, A-ztram-s1-1/-2, 2026-11-13): fixed-function
+    No public-key cryptography on the device (GRey, A-ztram-s1-1/-2, 2026-11-13): fixed-function
     node, assigned to its network in the factory, provisioned in a secure environment with one
     32-byte pairwise key per pinned peer; network configuration accepted only directly from the
     pinned controller under its pairwise key. No X25519, no Ed25519, no SHA-512 on the device. ✅
@@ -284,8 +284,11 @@ Order = recommended order of trial. "Have" = installed on this host on 2026-11-1
   tool: "VeriFast"
   class: "Separation logic"
   can_prove_here: "Ownership and aliasing as proof objects; closest to C-rusted's ownership ideas"
-  have: "🔴 binary release, vendor download"
-  status: "🔴"
+  have: "✅ 26.10, built from the vendor's source tag (no IDE, C only)"
+  status: >-
+    🔄 Pilot: the lock discipline of the Zephyr adapter, proved for a model of it (`proofs/vf/`,
+    step `vf` of the runner; L-33 to L-35 in `reports/PROOFS.md`). 🌱 Next: the real adapter file
+    (`reports/future-work.md`)
 - id: P-7
   tool: "CN (Cerberus)"
   class: "Separation-logic refinement types"
@@ -364,14 +367,14 @@ Order = recommended order of trial. "Have" = installed on this host on 2026-11-1
   status: >-
     ♻️ `proofs/poly_identity.wl`: the folding identity of the Poly1305 block step holds (expansion
     gives 0); worst cases under the contract: sums 2^58.4 of 64 bits, last carry 30.4 bits, limb 1
-    exceeds 26 bits by at most 101. 🥦 Grey (2026-11-13): use `FindInstance` and relatives to find
+    exceeds 26 bits by at most 101. 🥦 GRey (2026-11-13): use `FindInstance` and relatives to find
     the witness where an automatic prover fails on "there is a k"; first candidate: the multipliers
     for the whole-message Poly1305 invariant
 ```
 
 ## Further proof targets
 
-From two independent reviews (`reports/PROOFS.md`, "Independent reviews"): V-1..V-12 from review 1, V-13..V-23 from review 2. Difficulty L/M/H. Order accepted by Grey (A-ztram-s2-22): settle rule questions (V-13, D-5a) ✅, thin memory and layout budget (D-4, V-17) 🔄, reassembly (V-4) ♻️, authentication gate with a narrow crypto interface (V-1) ♻️, then real Salsa20/12 and Poly1305 (V-10) 🔄.
+From two independent reviews (`reports/PROOFS.md`, "Independent reviews"): V-1..V-12 from review 1, V-13..V-23 from review 2. Difficulty L/M/H. Order accepted by GRey (A-ztram-s2-22): settle rule questions (V-13, D-5a) ✅, thin memory and layout budget (D-4, V-17) 🔄, reassembly (V-4) ♻️, authentication gate with a narrow crypto interface (V-1) ♻️, then real Salsa20/12 and Poly1305 (V-10) 🔄.
 
 ```yaml
 - id: V-1
@@ -633,4 +636,4 @@ From two independent reviews (`reports/PROOFS.md`, "Independent reviews"): V-1..
 
 ## Supply chain
 
-Grey authorised opam for this strand on 2026-11-12 (Z-m-36); opam 2.6.1 is the official release binary in `~/.local/bin` (Ubuntu's 2.1.5 lacks security fixes). System libraries for opam builds come from apt through Grey (`graphviz`, `libgmp-dev` so far). Binary releases (VeriFast, ESBMC, Isabelle, TLA+) go under `../from-source/` or `../dl/` with a recorded SHA-256; ask Grey per tool.
+GRey authorised opam for this strand on 2026-11-12 (Z-m-36); opam 2.6.1 is the official release binary in `~/.local/bin` (Ubuntu's 2.1.5 lacks security fixes). System libraries for opam builds come from apt through GRey (`graphviz`, `libgmp-dev` so far). Binary releases (VeriFast, ESBMC, Isabelle, TLA+) go under `../from-source/` or `../dl/` with a recorded SHA-256; ask GRey per tool.

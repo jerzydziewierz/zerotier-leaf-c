@@ -12,7 +12,7 @@ State: 2026-11-14. Code: `zephyr/ztl_zephyr.c` (one thread of its own, one mutex
 - Seen: 8 to 12 datagrams in the first minutes of each run are dropped unread because their source endpoint (address and port) is not a pinned endpoint (`from_endpoint()`).
 - Not known: who sends them. Guess: a stock peer that also sends from its second or third UDP port, or a peer's packet for the old board identity. Not looked at with a capture.
 - Effect so far: none seen (no loss in 10,000 echoes). If a peer chose a non-pinned port as its only path, the leaf would be deaf to it.
-- To do: capture on the lab bridge (`tcpdump -ni <lab bridge> udp and host <board underlay address> and not port 9993` needs Grey's sudo), or add a counter per source port to `ztl status`.
+- To do: capture on the lab bridge (`tcpdump -ni <lab bridge> udp and host <board underlay address> and not port 9993` needs GRey's sudo), or add a counter per source port to `ztl status`.
 
 ## A-3 🌱 Not ported from the reference adapter
 

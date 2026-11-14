@@ -47,6 +47,7 @@ static uint8_t have_prefix;        /* and its network part, in bits; leaf thread
 static uint64_t in_cycles, out_cycles;
 static uint32_t in_calls, out_calls, in_max, out_max;
 static uint8_t placeholder_mac[ZTL_ETH_ALEN] = { 0x02, 0x5a, 0x54, 0x4c, 0x00, 0x01 };
+static uint8_t overlay_mac[ZTL_ETH_ALEN]; /* copy of leaf.mac; fixed after start */
 
 K_THREAD_STACK_DEFINE(ztl_stack, CONFIG_ZTL_WORKER_STACK_SIZE);
 static struct k_thread ztl_thread;
@@ -146,6 +147,15 @@ static struct net_pkt *frame_to_pkt(const struct ztl_frame *f)
 }
 
 /* Is this datagram from the pinned endpoint of a peer? */
+/*
+ * Read without the lock, by design: leaf.node.peer[].pinned and endpoint[]
+ * are written only in ztl_zephyr_start(), before the worker thread exists,
+ * and never again. Two proofs stand behind "never again": no public function
+ * of the leaf has the pinned peers in the list of what it may change
+ * (reports/PROOFS.md, L-24), and in the lock model (proofs/vf) every thread
+ * holds only a read share of this state after the start, so no write
+ * verifies. The same holds for sock, overlay and underlay_if.
+ */
 static bool from_endpoint(const struct net_sockaddr_in *from)
 {
 	for (unsigned int i = 0; i < ZTL_PEERS; i++) {
@@ -301,27 +311,27 @@ static const ZTL_ETH_API ztl_api = {
 ETH_NET_DEVICE_INIT(ztl_overlay, "ztl", ztl_dev_init, NULL, NULL, NULL, CONFIG_ETH_INIT_PRIORITY, &ztl_api,
 		    ZTL_MTU_MAX);
 
+/* Open the UDP socket of the underlay. Returns the descriptor, or a negative error number. */
 static int socket_open(void)
 {
 	struct net_ifreq req = { 0 };
 	struct net_sockaddr_in local = { .sin_family = NET_AF_INET, .sin_port = net_htons(local_port) };
+	const int s = zsock_socket(NET_AF_INET, NET_SOCK_DGRAM, NET_IPPROTO_UDP);
 
-	sock = zsock_socket(NET_AF_INET, NET_SOCK_DGRAM, NET_IPPROTO_UDP);
-	if (sock < 0) {
+	if (s < 0) {
 		return -errno;
 	}
 	/* Only the underlay: a datagram that comes through the virtual
 	 * interface itself must never reach the leaf. */
 	if (net_if_get_name(underlay_if, req.ifr_name, sizeof(req.ifr_name)) < 0 ||
-	    zsock_setsockopt(sock, ZSOCK_SOL_SOCKET, ZSOCK_SO_BINDTODEVICE, &req, sizeof(req)) != 0 ||
-	    zsock_bind(sock, (const struct net_sockaddr *)&local, sizeof(local)) != 0) {
+	    zsock_setsockopt(s, ZSOCK_SOL_SOCKET, ZSOCK_SO_BINDTODEVICE, &req, sizeof(req)) != 0 ||
+	    zsock_bind(s, (const struct net_sockaddr *)&local, sizeof(local)) != 0) {
 		const int e = (errno != 0) ? -errno : -ENODEV;
 
-		(void)zsock_close(sock);
-		sock = -1;
+		(void)zsock_close(s);
 		return e;
 	}
-	return 0;
+	return s;
 }
 
 int ztl_zephyr_start(const struct ztl_zephyr_config *config, struct net_if *underlay)
@@ -363,13 +373,26 @@ int ztl_zephyr_start(const struct ztl_zephyr_config *config, struct net_if *unde
 	if (ret == 0) {
 		underlay_if = underlay;
 		local_port = config->port;
-		ret = socket_open();
-	}
-	if (ret == 0) {
 		/* The Ethernet address follows from the node address and the network. */
-		(void)net_if_set_link_addr(overlay, leaf.mac, ZTL_ETH_ALEN, NET_LINK_ETHERNET);
+		memcpy(overlay_mac, leaf.mac, ZTL_ETH_ALEN);
 	}
 	k_mutex_unlock(&lock);
+	/* Calls into the network stack come after the lock is released, as everywhere in this file. */
+	if (ret == 0) {
+		const int s = socket_open();
+
+		if (s < 0) {
+			ret = s;
+		} else {
+			/* The descriptor is stored under the lock: the send path reads it there. */
+			k_mutex_lock(&lock, K_FOREVER);
+			sock = s;
+			k_mutex_unlock(&lock);
+		}
+	}
+	if (ret == 0) {
+		(void)net_if_set_link_addr(overlay, overlay_mac, ZTL_ETH_ALEN, NET_LINK_ETHERNET);
+	}
 	if (ret != 0) {
 		atomic_clear(&running);
 		return ret;

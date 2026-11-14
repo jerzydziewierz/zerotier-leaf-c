@@ -230,9 +230,30 @@ Every statement below is proved by a tool for every input that its contract allo
         gives back exactly the bytes that were sent, in both orders of arrival (at the level of the
         reassembly slot, as L-10)
       tool: "WP"
+- part: "Lock discipline of the Zephyr adapter, for a MODEL of it (proofs/vf)"
+  chapter: "proofs/vf/README.md"
+  proved:
+    - id: L-33
+      statement: >-
+        In the model, every call of the leaf (ztl_init, ztl_pin, ztl_input, ztl_poll, ztl_frame_to,
+        ztl_tx_second) is made by a thread that holds the adapter's mutex: the mutex owns the leaf
+        state and the packet and frame buffers, and a call needs that ownership. The receive buffer
+        belongs to the worker thread alone
+      tool: "VeriFast 26.10 (Redux and Z3 4.8.5), on the model"
+    - id: L-34
+      statement: >-
+        In the model, no call into the network stack is made while the mutex is held, with one
+        stated exception: sending a datagram (zsock_sendto and the packet functions). Every path
+        releases the mutex
+      tool: "VeriFast 26.10 (Redux and Z3 4.8.5), on the model"
+    - id: L-35
+      statement: >-
+        In the model, the state that is "fixed after the start" (pinned peers, endpoints, socket,
+        interfaces) cannot be written after the start: every thread then holds only a read share
+      tool: "VeriFast 26.10 (Redux and Z3 4.8.5), on the model"
 ```
 
-Each proof holds under these assumptions: the caller meets the stated preconditions (valid, separate buffers); the tools' model of C (no notion of reading memory that was never written; pointer alignment not checked); the compiler and the hardware are correct. The contracts are written by hand: 104 deliberate errors in the code (118 tool runs), each rejected by the tool named for it, are the guard against contracts that say too little (A-6, B-6, C-4, D-9, E-7).
+L-33 to L-35 are about a hand-made model that mirrors `zephyr/ztl_zephyr.c` function by function; nothing ties the model to the file, and the contracts of the Zephyr and leaf functions in it are assumptions (`proofs/vf/README.md`). Each of the other proofs holds under these assumptions: the caller meets the stated preconditions (valid, separate buffers); the tools' model of C (no notion of reading memory that was never written; pointer alignment not checked); the compiler and the hardware are correct. The contracts are written by hand: 104 deliberate errors in the code (118 tool runs), each rejected by the tool named for it, are the guard against contracts that say too little (A-6, B-6, C-4, D-9, E-7).
 
 ## Attempts on the classifier
 

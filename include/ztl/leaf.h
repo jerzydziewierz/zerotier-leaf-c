@@ -190,6 +190,8 @@ int ztl_pin(struct ztl_leaf *ZTL_EXCL l, const uint8_t addr[ZTL_ADDR_LEN], const
   @         ztl_gh_auth_calls, ztl_gh_auth_yes, ztl_gh_auth_key, ztl_gh_auth_pkt, ztl_gh_auth_len;
   @ ensures ztl_leaf_ok(l);
   @ ensures *tx_len == 0 || ZTL_PKT_MIN <= *tx_len <= ZTL_PKT_MAX;
+  @ // A reply goes to a pinned peer: *peer is an index that the caller can use.
+  @ ensures *tx_len != 0 ==> *peer < ZTL_PEERS && l->node.peer[*peer].pinned != 0;
   @ // frame->len is 0 (no frame) or the length of a frame that can be read.
   @ ensures frame->len <= ZTL_MTU_MAX;
   @ ensures frame->len != 0 ==> \valid_read(frame->data + (0 .. frame->len - 1));

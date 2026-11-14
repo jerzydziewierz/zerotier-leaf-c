@@ -1,10 +1,10 @@
 # Agent tests
 
-Checks that an agent does by procedure, because no build step or prover does them. Each has a stable ID (`AT-n`), says when to do it, how, and what counts as a pass. Report the result with the numbers; a finding is corrected in the document, or in the code if the document is right, or it goes to Grey as a numbered question.
+Checks that an agent does by procedure, because no build step or prover does them. Each has a stable ID (`AT-n`), says when to do it, how, and what counts as a pass. Report the result with the numbers; a finding is corrected in the document, or in the code if the document is right, or it goes to GRey as a numbered question.
 
 ## AT-1. Documents of `zerotier-leaf-c` agree with each other and with the code
 
-When: before each push of `zerotier-leaf-c` that changes a `.md` file, `src/`, `include/`, `proofs/run.sh` or a result that the documents cite; at handover; when Grey asks.
+When: before each push of `zerotier-leaf-c` that changes a `.md` file, `src/`, `include/`, `proofs/run.sh` or a result that the documents cite; at handover; when GRey asks.
 
 Scope: every tracked `.md` file of the repository (`git ls-files '*.md'`): today `README.md`, `README-MORE.md`, `CHECKLIST.md`, `reports/PROOFS.md`, `reports/PROTOCOL.md`.
 

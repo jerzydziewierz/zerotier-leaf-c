@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Run every proof. Exit status 0 only if every tool ran, exited 0 and
 # reported the expected result (a tool that proves nothing is a failure).
-# Usage: proofs/run.sh [cbmc|cbmc32|cover|cbmcpoly|eva|wp|wp32|smoke|target|vectors|proto|mutate]...
-# Default: cbmc cbmc32 cover cbmcpoly eva wp wp32 smoke target vectors proto. proto is the host
+# Usage: proofs/run.sh [cbmc|cbmc32|cover|cbmcpoly|eva|wp|wp32|smoke|vf|target|vectors|proto|mutate]...
+# Default: cbmc cbmc32 cover cbmcpoly eva wp wp32 smoke vf target vectors proto. proto is the host
 # test of the protocol layer (fixed cases, then random authentic packets, with sanitizers). cbmcpoly is the one
 # CBMC harness of the cryptography that ends in seconds (Poly1305 limb limits,
 # induction step); the others run through proofs/remote.sh. cbmc32 and wp32 repeat the
@@ -18,7 +18,7 @@ cd "$(dirname "$0")/.."
 # Provers do not run on the workstation: start this script through
 # proofs/on-remote.sh, which sets ZTL_ON_REMOTE and a memory limit for the run.
 [ "${ZTL_ON_REMOTE:-}" = 1 ] || { echo "run.sh: use proofs/on-remote.sh start [steps] (no local prover runs)"; exit 2; }
-tools=("$@"); [ ${#tools[@]} -eq 0 ] && tools=(cbmc cbmc32 cover cbmcpoly eva wp wp32 smoke target vectors proto)
+tools=("$@"); [ ${#tools[@]} -eq 0 ] && tools=(cbmc cbmc32 cover cbmcpoly eva wp wp32 smoke vf target vectors proto)
 FC0="opam exec --switch ztl -- frama-c -cpp-extra-args=-Iinclude -cpp-extra-args=-Isrc"
 # Units proved by WP, each alone: a function is proved against its contract,
 # and callers use the contracts of what they call.
@@ -82,6 +82,9 @@ for t in "${tools[@]}"; do
 			grep -E 'Timeout|Failed|rror|Doomed|[Ss]moke' $o.unit >> $o
 		done
 		echo "all units: $total goals" >> $o; rm -f $o.unit ;;
+	vf) # VeriFast: the lock model of the Zephyr adapter must verify, and each deliberate error in it must fail.
+		proofs/vf/run.sh > $o 2>&1
+		s=$?; grep -q '^run.sh: all cases as expected$' $o || s=1 ;;
 	target) # Compile for the Cortex-M7 with all warnings as errors; report code size and stack.
 		: > $o; s=0
 		for f in src/*.c; do

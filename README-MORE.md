@@ -118,13 +118,13 @@ Time inside the leaf on the board (i.MX RT1062 at 600 MHz, code in flash, counte
 ## Check
 
 ```sh
-proofs/on-remote.sh start          # all steps: CBMC (64- and 32-bit model, reachability), Eva, WP (both models, then a search for contradictory contracts and unreachable code), target build, test vectors, protocol test
+proofs/on-remote.sh start          # all steps: CBMC (64- and 32-bit model, reachability), Eva, WP (both models, then a search for contradictory contracts and unreachable code), VeriFast (lock model of the Zephyr adapter), target build, test vectors, protocol test
 proofs/on-remote.sh start mutate   # deliberate errors in the code; each must be rejected
 proofs/on-remote.sh wait           # wait for the end, copy results back; exit status 0 = all pass
 proofs/on-remote.sh status | stop | fetch
 ```
 
-No prover runs on the workstation. `proofs/on-remote.sh` copies the sources to another host (the ssh target `ZTL_REMOTE` in the local file `.env`, which is not in Git: copy `.env.example`; there is no default) and runs `proofs/run.sh` there as one systemd unit with a memory limit (`ZTL_MEM`, default 20G) and a time limit; `proofs/run.sh` refuses to start otherwise. The host needs the tools below, first in `PATH`: Frama-C with WP and Alt-Ergo in the opam switch `ztl` (`proofs/opam-setup.sh start`, needs apt `graphviz` and `libgmp-dev`), and the Zephyr SDK ARM compiler in `~/ztl-sdk/arm-zephyr-eabi`. Results come back as `proofs/out-<step>.txt`.
+No prover runs on the workstation. `proofs/on-remote.sh` copies the sources to another host (the ssh target `ZTL_REMOTE` in the local file `.env`, which is not in Git: copy `.env.example`; there is no default) and runs `proofs/run.sh` there as one systemd unit with a memory limit (`ZTL_MEM`, default 20G) and a time limit; `proofs/run.sh` refuses to start otherwise. The host needs the tools below, first in `PATH`: `cbmc`, `verifast`, Frama-C with WP and Alt-Ergo in the opam switch `ztl` (`proofs/opam-setup.sh start`, needs apt `graphviz` and `libgmp-dev`), and the Zephyr SDK ARM compiler in `~/ztl-sdk/arm-zephyr-eabi`. Results come back as `proofs/out-<step>.txt`.
 
 Pinned tool versions (all prover hosts run the same set; results with other versions are not the published results):
 
@@ -137,6 +137,7 @@ alt-ergo: "2.6.4 (opam switch ztl)"
 why3: "1.8.2 (opam switch ztl)"
 ocaml: "4.14.2 (opam switch ztl)"
 arm-compiler: "arm-zephyr-eabi-gcc of Zephyr SDK 1.0.1"
+verifast: "26.10 (built from the vendor's tag 26.10 without the IDE; its built-in provers Redux and Z3 4.8.5)"
 ```
 
 The CBMC harnesses for reassembly, for the receive gate and for the cryptography are large; they run one per unit through `proofs/remote.sh start|status|stop|fetch` (ssh target `ZTL_REMOTE_BIG` in `.env`, a host with much memory), at reduced packet size (see `reports/PROOFS.md`).
