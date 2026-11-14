@@ -49,7 +49,7 @@ Limits by design:
   * (it admits pinned peers and tells the controller that it has no rules engine); 
 * it takes a network configuration only directly from the pinned controller, without checking the controller's signature, and only when the configuration fits one chunk; 
 * it does not relay, bridge or discover peers; 
-* it has no protection against replayed packets yet; 
+* it has no protection against replayed packets (a stated limit, as in the reference; possible mitigations: [NOT_PROVEN.md](reports/NOT_PROVEN.md), N-7); 
 * the network's MTU must be 1280 to 1500 (set it on the controller: the stock default is 2800).
 
 
@@ -94,4 +94,4 @@ All limits, and the attempts that failed: [What all of this does not show](repor
 [More details](README-MORE.md)
 
 
-Licence: Apache-2.0.
+Licence: none granted. This is private intellectual property, published for reading only: all rights reserved, reproduction prohibited. See [LICENSE](LICENSE).

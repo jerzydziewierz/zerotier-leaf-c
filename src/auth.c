@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: LicenseRef-AllRightsReserved */
 /*
  * Packet authentication and encryption as ZeroTier composes them for cipher
  * suites 0 and 1 (reference: Packet::armor() and Packet::dearmor()):

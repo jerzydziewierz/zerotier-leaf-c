@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: LicenseRef-AllRightsReserved */
 #include "ztl/node.h"
 
 _Static_assert(ZTL_PEERS >= 1u && ZTL_PEERS <= 255u, "peer index is stored in 8 bits");

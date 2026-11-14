@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: LicenseRef-AllRightsReserved */
 /*
  * Reader for the ZeroTier dictionary format (network configuration):
  * lines "key=value", separated by a line feed. In a value, the bytes 0, 10,

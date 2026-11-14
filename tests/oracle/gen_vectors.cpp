@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: LicenseRef-AllRightsReserved
 // Test vector generator. It calls the reference implementation (ZeroTier One
 // core: Packet::armor(), Poly1305::compute(), Salsa20::crypt12()) on fixed
 // pseudo-random inputs and prints inputs and outputs as hexadecimal text.

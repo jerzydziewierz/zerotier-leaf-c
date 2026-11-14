@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: LicenseRef-AllRightsReserved */
 /*
  * Protocol messages of the leaf. What a stock peer expects, with the places
  * in the reference source: reports/PROTOCOL.md.

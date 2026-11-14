@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: LicenseRef-AllRightsReserved */
 /*
  * CBMC harness for the receive gate ztl_rx() (-DH_GATE): "authentication
  * before effects".

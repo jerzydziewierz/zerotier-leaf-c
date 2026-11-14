@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: LicenseRef-AllRightsReserved */
 #include "ztl/wire.h"
 
 /* Target data layout (ARM EABI, 32-bit). The proofs run with other data

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: LicenseRef-AllRightsReserved
 if(CONFIG_ZTL)
   if(NOT CONFIG_CSPRNG_ENABLED OR CONFIG_TEST_CSPRNG_GENERATOR)
     message(FATAL_ERROR "zerotier-leaf-c needs a cryptographically secure random source that is not the test generator")

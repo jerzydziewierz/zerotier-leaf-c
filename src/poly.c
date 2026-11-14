@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: LicenseRef-AllRightsReserved */
 /*
  * Poly1305 (D. J. Bernstein). With r and s the two halves of the one-time
  * key and c_1 .. c_q the message blocks (each with a 1 appended):

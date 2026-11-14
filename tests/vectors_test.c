@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: LicenseRef-AllRightsReserved */
 /*
  * Host test: the cryptographic code against test vectors from the reference
  * (tests/vectors/reference.txt, made by tests/oracle/gen.sh).

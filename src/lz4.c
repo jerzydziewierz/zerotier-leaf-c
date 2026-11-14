@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: LicenseRef-AllRightsReserved */
 #include "ztl/lz4.h"
 
 #define LZ4_MIN_MATCH 4u

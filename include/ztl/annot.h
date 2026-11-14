@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: LicenseRef-AllRightsReserved */
 /*
  * Interface annotations in the style of C-rusted (Bagnara et al., 2024).
  * They expand to nothing. They state intent for the reader; the properties

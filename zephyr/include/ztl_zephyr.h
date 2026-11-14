@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: LicenseRef-AllRightsReserved */
 /* Zephyr adapter of the leaf: one virtual Ethernet interface, one UDP socket, one thread. */
 #ifndef ZTL_ZEPHYR_H
 #define ZTL_ZEPHYR_H

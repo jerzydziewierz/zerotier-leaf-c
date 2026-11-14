@@ -1,0 +1,27 @@
+Copyright (c) 2026 George Jerzy Dziewierz Rey. All rights reserved.
+
+This repository is private intellectual property. It is published for reading
+only.
+
+No licence and no right of any kind is granted, expressly, by implication, by
+estoppel or otherwise. Without the prior written permission of the copyright
+holder you may not use, copy, reproduce, modify, merge, publish, distribute,
+sublicense or sell this software, its proofs, its documentation, its figures
+or any part of them, and you may not make derivative works of them.
+Reproduction is prohibited.
+
+Statements of another licence in earlier revisions of this repository are
+withdrawn for all revisions from this one onward.
+
+Third-party material. The test vectors in tests/vectors/ are outputs of the
+ZeroTier One reference implementation, and the programs in tests/oracle/ and
+tools/provision/ are built against its source code, which is not part of this
+repository and has its own licence terms. Nothing in this file grants any
+right in third-party material.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

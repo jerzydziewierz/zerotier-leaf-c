@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: LicenseRef-AllRightsReserved */
 /* Byte order helpers and wipe for the cryptographic code. Not a public interface. */
 #ifndef ZTL_CRYPTO_INTERNAL_H
 #define ZTL_CRYPTO_INTERNAL_H

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: LicenseRef-AllRightsReserved */
 /*
  * Provisioning tool (host, secure environment): make what the leaf needs
  * from the identities, with the code of the reference.

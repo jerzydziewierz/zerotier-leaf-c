@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: LicenseRef-AllRightsReserved */
 /*
  * Host test endpoint: the leaf on a loopback UDP socket, as the peer of the
  * reference node (../grey_zerotier/tests/host_node.cpp, built as

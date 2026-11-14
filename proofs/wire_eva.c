@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: LicenseRef-AllRightsReserved */
 /*
  * Frama-C Eva harness: ztl_classify() on unknown contents, len 0..ZTL_PKT_MAX+1.
  * Purpose: absence of run-time errors, and the preconditions at the call.

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: LicenseRef-AllRightsReserved */
 /* Shell command "ztl status": counters of the adapter and of the leaf. No key material. */
 #include <zephyr/shell/shell.h>
 #include "ztl_zephyr.h"

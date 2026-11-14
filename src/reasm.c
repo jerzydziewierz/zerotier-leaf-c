@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: LicenseRef-AllRightsReserved */
 #include "reasm_internal.h"
 
 _Static_assert(ZTL_RX_SLOTS >= 1u && ZTL_RX_SLOTS <= 16u, "slot count out of range");

@@ -35,6 +35,9 @@ L=proofs; [ -n "${ZTL_TAG:-}" ] && { L=proofs/out-tag${ZTL_TAG}; mkdir -p "$L"; 
 cmd=${1:-status}; shift || true
 case "$cmd" in
 start)
+	# A run that is going must not lose its result files: refuse before anything is copied or removed.
+	case "$(r "systemctl show $U -p ActiveState --value")" in active|activating|deactivating)
+		echo "on-remote.sh: $U is running on the prover host; use wait or stop first"; exit 1 ;; esac
 	rsync -a --delete --exclude '.git' --exclude 'proofs/out-*' --exclude '.frama-c' ./ "$H:$D/" || exit 1
 	r "cd $D && rm -rf proofs/out-*; sudo systemctl reset-failed $U 2>/dev/null; sudo systemd-run --quiet --unit=$U \
 		-p User=\$(id -un) -p WorkingDirectory=\$PWD -p MemoryMax=$MEM -p MemorySwapMax=0 -p RuntimeMaxSec=$TMO \

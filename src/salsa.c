@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: LicenseRef-AllRightsReserved */
 /*
  * Salsa20/12 key stream (D. J. Bernstein; 256-bit key, 64-bit IV, six double
  * rounds) as ZeroTier uses it for cipher suite 1.

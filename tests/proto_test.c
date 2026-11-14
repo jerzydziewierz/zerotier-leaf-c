@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: LicenseRef-AllRightsReserved */
 /*
  * Host test of the protocol layer. First fixed cases with known answers
  * (what must be answered, delivered, refused). Then random rounds: input

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: LicenseRef-AllRightsReserved */
 /*
  * CBMC harnesses for ztl_reasm_input(). Select one with -DH_STEP, -DH_ORDER,
  * -DH_DUP or -DH_TIMEOUT (proofs/run.sh runs all).

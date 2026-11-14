@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: LicenseRef-AllRightsReserved */
 /* Reassembly of packets that arrive as a head and one fragment. */
 #ifndef ZTL_REASM_H
 #define ZTL_REASM_H

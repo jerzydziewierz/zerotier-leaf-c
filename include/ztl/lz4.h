@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: LicenseRef-AllRightsReserved */
 /* Bounded decoder for one LZ4 block (the form in which ZeroTier compresses a packet payload). */
 #ifndef ZTL_LZ4_H
 #define ZTL_LZ4_H

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: LicenseRef-AllRightsReserved */
 /* Parts of the protocol layer that have their own contracts. Not a public interface. */
 #ifndef ZTL_LEAF_INTERNAL_H
 #define ZTL_LEAF_INTERNAL_H

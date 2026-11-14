@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: LicenseRef-AllRightsReserved */
 /*
  * Proof-only code for Frama-C WP: the two orders of arrival of one packet,
  * written as two small functions. WP proves each from the CONTRACTS of

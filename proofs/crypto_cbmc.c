@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: LicenseRef-AllRightsReserved */
 /*
  * CBMC harnesses for the cryptographic code. They share no contract text
  * with the WP proofs.

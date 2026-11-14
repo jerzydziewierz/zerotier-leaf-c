@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: LicenseRef-AllRightsReserved */
 /* ZeroTier protocol v1 datagram framing: sizes, offsets, classification. */
 #ifndef ZTL_WIRE_H
 #define ZTL_WIRE_H

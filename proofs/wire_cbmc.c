@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: LicenseRef-AllRightsReserved */
 /*
  * CBMC harness: ztl_classify() for every buffer of every length
  * 0..ZTL_PKT_MAX+1. The harness holds a model of the reference receive path

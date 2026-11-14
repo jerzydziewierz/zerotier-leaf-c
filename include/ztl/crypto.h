@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: LicenseRef-AllRightsReserved */
 /*
  * Cryptographic parts behind ztl_auth_open() and ztl_auth_seal(): Salsa20/12
  * key stream, Poly1305 one-time authenticator, comparison in constant time,

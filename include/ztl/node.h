@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: LicenseRef-AllRightsReserved */
 /* Node state and the receive gate: nothing passes without authentication. */
 #ifndef ZTL_NODE_H
 #define ZTL_NODE_H

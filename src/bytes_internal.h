@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: LicenseRef-AllRightsReserved */
 /*
  * Numbers to and from bytes, most significant byte first (the order of the
  * ZeroTier wire format), and the clock difference. Written as arithmetic

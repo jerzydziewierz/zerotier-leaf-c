@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: LicenseRef-AllRightsReserved
 config ZTL
 	bool "ZeroTier leaf in C (zerotier-leaf-c)"
 	depends on NET_L2_ETHERNET && NET_IPV4 && NET_UDP && NET_SOCKETS

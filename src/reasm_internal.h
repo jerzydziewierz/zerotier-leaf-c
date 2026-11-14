@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: LicenseRef-AllRightsReserved */
 /*
  * Parts of the reassembly, each with its own contract. Every function is
  * proved against its contract alone; a caller is proved with the contracts
