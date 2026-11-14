@@ -105,7 +105,7 @@ A stock node (`zerotier-one`) is built to join any network from anywhere, to fin
   consequence: >-
     The leaf announces protocol version 11, so stock peers use Salsa20/12 + Poly1305 with it.
     One long-term key for each peer: no forward secrecy. A peer set to send encrypted HELLO
-    cannot talk to the leaf.
+    cannot talk to the leaf. What they would cost: "Options that were costed" below.
 - left_out: "Root servers, peer look-up (WHOIS), relaying through roots"
   a_stock_node: "asks the roots for unknown peers and sends through them until a direct path exists"
   consequence: "The leaf talks only to pinned peers, each at one fixed UDP address on a network that it can reach."
@@ -130,9 +130,18 @@ A stock node (`zerotier-one`) is built to join any network from anywhere, to fin
 - left_out: "Packets above 2,048 bytes and in more than two datagrams; frame sizes above 1,500"
   a_stock_node: "packets in up to 7 datagrams; frame sizes up to 10,000 bytes, 2,800 by default"
   consequence: "The network's MTU must be set to 1280..1500 on the controller (the stock default is 2800)."
-- left_out: "Relaying for others, compression of what it sends, TCP fallback, trusted paths"
+- left_out: "Relaying for others, TCP fallback, trusted paths"
   a_stock_node: "has them"
-  consequence: "The leaf decompresses what it gets (a controller always compresses) and never compresses."
+  consequence: "None for an end point on a network that it can reach directly."
+- left_out: "Compression of what it sends (LZ4)"
+  a_stock_node: >-
+    compresses some control messages (configuration, credentials, subscriptions) when the result
+    is smaller; it never compresses unicast frames, the user's data
+  consequence: >-
+    Nothing is lost for data: a stock node does not compress frames either, and no receiver
+    requires compressed packets. The leaf decompresses what it gets (a controller always
+    compresses the configuration). Its own control messages are too short to gain. See
+    "Options that were costed" below.
 - left_out: "Rate limits on answers; any protection against replay"
   a_stock_node: "limits the rate of some answers; has no replay protection either"
   consequence: "See NOT_PROVEN.md, N-7."
@@ -142,6 +151,64 @@ A stock node (`zerotier-one`) is built to join any network from anywhere, to fin
 ```
 
 What a stock peer still expects from the leaf, message by message: [PROTOCOL.md](PROTOCOL.md).
+
+## Options that were costed, not built
+
+**Compression of sent packets (LZ4).** Costed on 2026-11-14 with a sketch of a bounded compressor in the style of this code (no heap, no library call, fixed table, "send as it is if not smaller"), compiled for the Cortex-M7 at `-Os`; its output was decoded back by the leaf's own decoder for 200,000 varied inputs and for every length from 1 to 2,048 bytes of zeros, constants and random data, without a failure. Sizes are measured; cycles are an estimate from the instruction count, not a measurement on the board.
+
+```yaml
+- cost: "about 450 bytes of code; 512 bytes of RAM (table of 256 entries); no new buffer (the leaf's plain buffer is free while it sends)"
+- a_larger_table: "1,024 or 4,096 entries (2 KB, 8 KB of RAM) shrink a 2 KB packet by 1 to 2 % more: not worth it"
+- gain_on_text: "JSON and HTML of 1.2 to 1.4 KB shrink to about half; cycles about even, because the cipher then has half the bytes"
+- gain_on_short_packets: "none: ARP, TCP SYN and ACK, DNS queries, short telemetry do not shrink"
+- gain_on_compressed_or_encrypted_data: "none, and about 5 % more cycles for the attempt (SSH, TLS, media, sensor data that is compressed already)"
+- pays_in_cycles_when: "the output is below about 0.55 of the input"
+```
+
+The intended use of this leaf is a stream of sensor data that is compressed before it reaches the leaf. For that traffic the option gains nothing, so it stays out of the default build; it is a possible build option for nodes that send long plain text.
+
+**AES-GMAC-SIV (cipher suite 3 of protocol version 12 and later).** Costed on 2026-11-14 with plain C written for the purpose, compiled for the Cortex-M7 at `-Os`; its sealed packets are equal, byte for byte, to those of the reference for about 90 packet lengths from 28 to 2,048 bytes (on a host). Not written in the proof style of this code and not run on the board, so take the code sizes as ±20 %. For scale: today's `auth.c`, `salsa.c` and `poly.c` are 2,014 bytes, and they would stay, because HELLO always uses them.
+
+```yaml
+- variant: "smallest (S-box tables only, authentication bit by bit, keys expanded for each packet)"
+  code_and_tables: "about 2.5 KB (2,336 measured, the rest is the estimate for the changes in the leaf)"
+  ram: "448 bytes (two 32-byte AES keys for each of 7 peers); stack about 140 bytes more than today"
+- variant: "fast (one table for each direction of AES, 4-bit table for the authentication, schedules kept)"
+  code_and_tables: "about 5.4 KB (5,186 measured)"
+  ram: "6,832 bytes (976 for each peer), or 0 if the host tool writes the prepared tables into the firmware as constants (then 6.8 KB of flash)"
+- speed: "the fast variant is about 6 times faster than the smallest on a host; cycles on the board are not measured"
+- what_else_it_needs: >-
+    The provisioning tool derives the two AES keys from the pairwise secret (HMAC-SHA384), so no
+    hash is needed on the board. The leaf must then announce version 12 or 13; nothing else in
+    the reference depends on the version.
+- what_it_changes_in_the_proofs: >-
+    This suite decrypts first and checks afterwards: the receiver decrypts with the tag as the
+    starting value and then computes the authentication code over the plain text. The proved
+    statement "after the answer no, the packet is unchanged" (L-17) cannot hold in this form;
+    the gate would need another statement, for example "a refused packet is never delivered,
+    and its buffer is wiped".
+- side_channel: "AES with table look-ups is not constant time; a variant without tables is about 2 to 3 KB more (not measured)"
+- what_it_buys: >-
+    A repeated packet ID no longer exposes data (the design tolerates a repeated nonce), and a
+    cipher with a larger security margin. It does not buy speed on this processor: it has no
+    AES instructions.
+```
+
+**Encrypted HELLO.** A stock peer can be set to encrypt its HELLO (off by default). To do it, the sender makes a new key pair for each HELLO and combines it with the receiver's public key; the receiver combines the received public value with its own secret key. Both are Curve25519 operations with fresh values, so no host can compute them in advance.
+
+```yaml
+- under_the_rule_no_public_key_cryptography_on_the_board: "not possible, neither to receive nor to send properly"
+- if_the_rule_were_dropped: >-
+    about 3.3 KB of code on top of AES (Curve25519 scalar multiplication 1,358 and SHA-512 about
+    1,600, measured from compact C; the rest estimated), a random source, the board's own secret
+    key in the firmware, about 1.2 KB more stack, and about 10 ms of computing for each
+    operation (estimated)
+- for_comparison: "the same two functions in the reference build are about 16 KB"
+- needed_for_the_newer_protocol: "no: a node can announce version 12 or 13 and never use encrypted HELLO"
+```
+
+Reading: AES-GMAC-SIV is affordable in memory (2.5 to 5.4 KB of code, 0.4 to 6.8 KB of RAM) and its real price is in the proofs and in cycles. Encrypted HELLO is not compatible with the design decision that keeps the board's secret key out of the firmware.
+
 
 ## Where the proofs are
 
