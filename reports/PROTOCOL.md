@@ -1,6 +1,6 @@
 # What a stock ZeroTier peer expects from this leaf
 
-State: 2026-11-13. 💡 The leaf now implements what this page lists under "must", and exchanges frames with the reference core on a host (see [PROOFS.md](PROOFS.md), "Attempts on the protocol layer"); a stock daemon and a stock controller as the other side are the next test. A reading of the reference source (ZeroTier One 1.16.2, revision `fe29cd88`, directory `node/` unless another is named; line numbers are of that revision with the project's patches, stock behaviour reported). It answers the design questions D-6 and D-8 of [CHECKLIST.md](../CHECKLIST.md): which messages the leaf must send, answer and parse, and whether a leaf without an identity secret can do all of it. Evidence tags: [CODE] read in the source, [INFERRED] concluded from it. Nothing here was measured yet. Older peers (1.4 to 1.14) were not read for these points.
+State: 2026-11-13. 💡 The leaf now implements what this page lists under "must", and exchanges frames with the reference core on a host (see [PROOFS.md](PROOFS.md), "Attempts on the protocol layer"); it also runs on a board as a member of a network with a stock 1.16.2 controller and stock 1.16.2 peers ([PROOFS.md](PROOFS.md), "What all of this does not show"). A reading of the reference source (ZeroTier One 1.16.2, revision `fe29cd88`, directory `node/` unless another is named; line numbers are of that revision with the project's patches, stock behaviour reported). It answers the design questions D-6 and D-8 of [CHECKLIST.md](../CHECKLIST.md): which messages the leaf must send, answer and parse, and whether a leaf without an identity secret can do all of it. Evidence tags: [CODE] read in the source, [INFERRED] concluded from it. Measured items carry [MEASURED]. Older peers (1.4 to 1.14) were not read for these points.
 
 ## Result in short
 
@@ -24,7 +24,7 @@ Timing: a peer sends a full HELLO every 60 s per path (`ZT_PEER_PING_PERIOD`), a
 
 ## OK and ERROR
 
-OK: in-reply-to verb (1), in-reply-to packet ID (8), payload. ERROR: the same plus an error code (1) before the payload (`Packet.hpp:236-243`). OK(HELLO) payload: echoed timestamp (8), protocol version (1, the leaf sends 11), major, minor (1 each), revision (2), the sender's address as seen by the responder, optional worlds. The receiver ignores an OK whose packet ID it does not expect. Smallest OK(HELLO) from the leaf: 22 payload bytes. [CODE]
+OK: in-reply-to verb (1), in-reply-to packet ID (8), payload. ERROR: the same plus an error code (1) before the payload (`Packet.hpp:236-243`). OK(HELLO) payload: echoed timestamp (8), protocol version (1, the leaf sends 11), major, minor (1 each), revision (2), the sender's address as seen by the responder, optional worlds. The receiver ignores an OK whose packet ID it does not expect. The leaf sends an OK(HELLO) of 25 bytes after the verb (no worlds) and accepts one of 22 bytes or more. [CODE]
 
 ## Verbs from a stock peer or controller
 
@@ -47,7 +47,7 @@ Request (`Network.cpp:1492-1506`): network ID (8), dictionary length (2), metada
 
 Reply (`Node.cpp:864-891`): OK(NETWORK_CONFIG_REQUEST), or NETWORK_CONFIG for a push: network ID (8), chunk length (2), chunk, flags (1), update ID (8), total length (4), chunk index (4), `0x01`, signature length (2, value 96), signature. Each chunk is LZ4-compressed, then cut into fragments at the path MTU. A stock controller's chunk can be 9,740 bytes; the leaf accepts what fits in two fragments and 2,048 bytes (the reference module has the same limit; the lab network has MTU 1280 for it). The leaf does not check the signature: it accepts the configuration only directly from the pinned controller, under the pairwise MAC (D-8).
 
-Dictionary keys the leaf needs: `v` version, `nwid` network, `ts` timestamp, `id` issued-to address, `t` type (0 = private), `mtu`, `I` static addresses, `C` COM as an opaque blob. Optional: `r` revision, `ctmd` COM window, `f` flags, `ml` multicast limit, `RT` routes. Not needed: rules, capabilities, tags, DNS, SSO, legacy keys.
+Dictionary keys the leaf reads: `nwid` network, `id` issued-to address, `mtu`, `C` COM as an opaque blob (all four needed); `ts` timestamp and `t` type (0 = private), taken as 0 when absent; `I` static addresses (without it the leaf has no address). It does not read `v`. Optional: `r` revision, `ctmd` COM window, `f` flags, `ml` multicast limit, `RT` routes. Not needed: rules, capabilities, tags, DNS, SSO, legacy keys.
 
 ## Membership between members
 
@@ -60,7 +60,7 @@ ARP for IPv4 uses the group "broadcast MAC, ADI = the IPv4 address". A stock sen
 ## Open points
 
 - ✅ [MEASURED] Size of a real configuration: the dictionary that a stock 1.16.2 controller gives a member of a small private network (one address, one route, default rules) is 1,121 bytes plain; the packet around it adds about 140. The leaf's plain buffer holds 2,020.
-- ✅ [CODE] Request metadata: the leaf sends `v=7`, the vendor and version numbers and no `revr` (rules engine revision). A controller then sends one "accept" rule in place of the network's rules (`nonfree/controller/EmbeddedNetworkController.cpp:1917`), and the current configuration format because `v` is 6 or more (`:2287`). The first run against a stock controller will confirm it.
+- ✅ [CODE] Request metadata: the leaf sends `v=7`, the vendor and version numbers and no `revr` (rules engine revision). A controller then sends one "accept" rule in place of the network's rules (`nonfree/controller/EmbeddedNetworkController.cpp:1917`), and the current configuration format because `v` is 6 or more (`:2287`). A stock 1.16.2 controller gave the leaf a configuration on this request (board run).
 - ⚠️ [CODE] A network without an explicit MTU gets 2800 (`Constants.hpp:290`); the leaf refuses a configuration with an MTU above 1500. The deployer sets the MTU on the controller.
 - 🌱 The same reading for peers 1.4 to 1.14.
 - 🌱 Verb counts from a run of the reference node (D-6), to confirm this table by measurement.

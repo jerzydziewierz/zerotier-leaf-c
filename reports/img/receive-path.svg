@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1480 766" width="1480" height="766" font-family="DejaVu Sans, Arial, sans-serif" font-size="15">
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0b0b0b"/></marker></defs>
+<rect width="1480" height="766" fill="#fcfcfb"/>
+<text x="30" y="36" fill="#0b0b0b" font-size="18" text-anchor="start" font-weight="bold">One received datagram, step by step (ztl_input)</text>
+<rect x="40" y="58" width="760" height="62" rx="8" fill="#fbe3d8" stroke="#eb6834" stroke-width="1.5"/>
+<text x="52" y="82" fill="#0b0b0b" font-weight="bold">UDP datagram from the underlay</text>
+<text x="52" y="104" fill="#52514e" font-size="13.5">0 to 2,048 bytes; nothing in it is trusted</text>
+<text x="820" y="86" fill="#52514e" font-size="13.5" text-anchor="start" font-weight="normal">adapter: zsock_recvfrom(), then ztl_input()</text>
+<line x1="420" y1="120" x2="420" y2="142" stroke="#0b0b0b" stroke-width="2"  marker-end="url(#a)" />
+<rect x="40" y="142" width="760" height="62" rx="8" fill="#d9f0e6" stroke="#1baf7a" stroke-width="1.5"/>
+<text x="52" y="166" fill="#0b0b0b" font-weight="bold">1  Classify (wire.c)</text>
+<text x="52" y="188" fill="#52514e" font-size="13.5">head of a packet, second part of a packet, or drop</text>
+<text x="820" y="170" fill="#52514e" font-size="13.5" text-anchor="start" font-weight="normal">proved: the exact rule, both directions (L-7 to L-9)</text>
+<line x1="420" y1="204" x2="420" y2="226" stroke="#0b0b0b" stroke-width="2"  marker-end="url(#a)" />
+<text x="820" y="190" fill="#eb6834" font-size="13" text-anchor="start" font-weight="normal">no → counted and dropped; nothing else changes</text>
+<rect x="40" y="226" width="760" height="62" rx="8" fill="#d9f0e6" stroke="#1baf7a" stroke-width="1.5"/>
+<text x="52" y="250" fill="#0b0b0b" font-weight="bold">2  Reassemble (reasm.c)</text>
+<text x="52" y="272" fill="#52514e" font-size="13.5">a packet in two datagrams is joined; 2 packets can wait, 5 s at most</text>
+<text x="820" y="254" fill="#52514e" font-size="13.5" text-anchor="start" font-weight="normal">proved: both arrival orders, limits, slot rule (L-10 to L-12)</text>
+<line x1="420" y1="288" x2="420" y2="310" stroke="#0b0b0b" stroke-width="2"  marker-end="url(#a)" />
+<text x="820" y="274" fill="#eb6834" font-size="13" text-anchor="start" font-weight="normal">not complete yet → kept; nothing delivered</text>
+<rect x="40" y="310" width="760" height="62" rx="8" fill="#d9f0e6" stroke="#1baf7a" stroke-width="1.5"/>
+<text x="52" y="334" fill="#0b0b0b" font-weight="bold">3  Receive gate (rx.c)</text>
+<text x="52" y="356" fill="#52514e" font-size="13.5">for this node? from a pinned peer? cipher suite allowed? then authenticate with that peer's key</text>
+<text x="820" y="338" fill="#52514e" font-size="13.5" text-anchor="start" font-weight="normal">proved: nothing passes without one yes (L-13 to L-16)</text>
+<line x1="420" y1="372" x2="420" y2="394" stroke="#0b0b0b" stroke-width="2"  marker-end="url(#a)" />
+<text x="820" y="358" fill="#eb6834" font-size="13" text-anchor="start" font-weight="normal">no → counted and dropped; nothing else changes</text>
+<rect x="40" y="394" width="760" height="62" rx="8" fill="#d9f0e6" stroke="#1baf7a" stroke-width="1.5"/>
+<text x="52" y="418" fill="#0b0b0b" font-weight="bold">4  Open the packet (auth.c, salsa.c, poly.c)</text>
+<text x="52" y="440" fill="#52514e" font-size="13.5">Poly1305 MAC over the packet; if right, Salsa20/12 decrypts it in place</text>
+<text x="820" y="422" fill="#52514e" font-size="13.5" text-anchor="start" font-weight="normal">proved: memory, no wrap, Poly1305 steps (L-17 to L-20); a right MAC: test vectors</text>
+<line x1="420" y1="456" x2="420" y2="478" stroke="#0b0b0b" stroke-width="2"  marker-end="url(#a)" />
+<text x="820" y="442" fill="#eb6834" font-size="13" text-anchor="start" font-weight="normal">no → counted and dropped; nothing else changes</text>
+<rect x="40" y="478" width="760" height="62" rx="8" fill="#d9f0e6" stroke="#1baf7a" stroke-width="1.5"/>
+<text x="52" y="502" fill="#0b0b0b" font-weight="bold">5  Decompress if flagged (lz4.c)</text>
+<text x="52" y="524" fill="#52514e" font-size="13.5">into the leaf's own 2,020-byte buffer</text>
+<text x="820" y="506" fill="#52514e" font-size="13.5" text-anchor="start" font-weight="normal">proved: no access outside either buffer (L-21)</text>
+<line x1="420" y1="540" x2="420" y2="562" stroke="#0b0b0b" stroke-width="2"  marker-end="url(#a)" />
+<text x="820" y="526" fill="#eb6834" font-size="13" text-anchor="start" font-weight="normal">no → counted and dropped; nothing else changes</text>
+<rect x="40" y="562" width="760" height="62" rx="8" fill="#d9f0e6" stroke="#1baf7a" stroke-width="1.5"/>
+<text x="52" y="586" fill="#0b0b0b" font-weight="bold">6  Act on the verb (leaf.c)</text>
+<text x="52" y="608" fill="#52514e" font-size="13.5">HELLO, ECHO: answer. OK, ERROR: match a waiting request. Configuration: take it. FRAME: check, hand over</text>
+<text x="820" y="590" fill="#52514e" font-size="13.5" text-anchor="start" font-weight="normal">proved: bounds, one packet ID per packet, invariant (L-23 to L-29); meaning: tests</text>
+<line x1="250" y1="624" x2="250" y2="658" stroke="#0b0b0b" stroke-width="2"  marker-end="url(#a)" />
+<line x1="590" y1="624" x2="590" y2="658" stroke="#0b0b0b" stroke-width="2"  marker-end="url(#a)" />
+<rect x="60" y="658" width="380" height="84" rx="8" fill="#dce9fa" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="72" y="682" fill="#0b0b0b" font-weight="bold">Ethernet frame for the host</text>
+<text x="72" y="704" fill="#52514e" font-size="13.5">1 to 1,500 bytes, inside the datagram or the leaf</text>
+<text x="72" y="723" fill="#52514e" font-size="13.5">adapter gives it to the Zephyr network stack</text>
+<rect x="470" y="658" width="330" height="84" rx="8" fill="#fbe3d8" stroke="#eb6834" stroke-width="1.5"/>
+<text x="482" y="682" fill="#0b0b0b" font-weight="bold">reply packet for the peer</text>
+<text x="482" y="704" fill="#52514e" font-size="13.5">28 to 2,048 bytes in the caller's buffer</text>
+<text x="482" y="723" fill="#52514e" font-size="13.5">adapter sends it as 1 or 2 UDP datagrams</text>
+<text x="820" y="690" fill="#52514e" font-size="13.5" text-anchor="start" font-weight="normal">Both, one, or neither can come out of one call.</text>
+<text x="820" y="710" fill="#52514e" font-size="13.5" text-anchor="start" font-weight="normal">Nothing comes out before step 4 said yes (L-23).</text>
+</svg>

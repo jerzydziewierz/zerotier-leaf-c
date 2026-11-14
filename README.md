@@ -69,12 +69,26 @@ Proved by machine for every input, not shown by tests: Frama-C WP with three aut
 * **Authentication before effects, whole leaf**: no reply packet and no frame for the host comes out of `ztl_input()` without that yes; after the start no call writes the own address, the pinned peers or their keys. ([details](reports/PROOFS.md#attempts-on-the-protocol-layer))
 * **One packet ID for each packet**: the ID is the nonce of the encryption; every call that builds a packet moves the counter by exactly one. 
 * **Bounds on everything that leaves the leaf**: a frame for the host has 1 to 1,500 bytes and is readable; a packet has 28 to 2,048 bytes; a frame from the host goes out only to a pinned peer that was heard. 
-* **Cryptography**: the Poly1305 limbs stay inside their limits for a message of any length; each Poly1305 step is proved as a statement about numbers; a refused packet is left unchanged. ([details](reports/PROOFS.md#attempts-on-the-cryptography))
-* **LZ4 decoder and configuration reader**: no access outside their buffers for any input, however malformed. 
+* **Cryptography**: the Poly1305 limbs stay inside their limits for a message of any length up to the packet size; each Poly1305 step is proved as a statement about numbers; a refused packet is left unchanged. ([details](reports/PROOFS.md#attempts-on-the-cryptography))
+* **LZ4 decoder and configuration reader**: no access outside their buffers for any input up to the packet size, however malformed. 
 
 The proofs notice wrong code: 102 deliberate errors were put into the sources, one at a time, and each was rejected by the tool that should see it.
 
-NOT proved. Shown only by tests against the reference implementation: what the messages mean and when the timers fire; that a "yes" of the authentication means a right MAC (the cipher and the MAC give the reference's bytes on test vectors). Shown only by reading the compiled code: constant time of the MAC comparison. Not there at all: protection against replayed packets. "Proved" means that the code meets its written contract in the tools' model of C; the contracts are written by hand, and the compiler is trusted. All limits, and the attempts that failed: [What all of this does not show](reports/PROOFS.md#what-all-of-this-does-not-show).
+## NOT proven, but still tested
+
+Shown only by tests against the reference implementation: 
+* what the messages mean and when the timers fire; 
+* that a "yes" of the authentication means a right MAC (the cipher and the MAC give the reference's bytes on test vectors). 
+
+Shown only by reading the compiled code: 
+* constant time of the MAC comparison. 
+
+Not there at all: 
+* protection against replayed packets. 
+
+"Proved" means that the code meets its written contract in the tools' model of C; the contracts are written by hand, and the compiler is trusted. 
+
+All limits, and the attempts that failed: [What all of this does not show](reports/PROOFS.md#what-all-of-this-does-not-show).
 
 
 [More details](README-MORE.md)

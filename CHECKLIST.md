@@ -4,7 +4,7 @@ Strand `ztram`;
 mode:prototype (TODO Z-48). 
 This folder holds the new solution: a wire-compatible ZeroTier leaf in C with no general heap. 
 
-The reference solution is `../grey_zerotier/` (public: `../grey-zerotier-public/`); it stays as the differential oracle. Baseline to beat: 110,508 B add-on linked RAM, 509 KB flash (`compile_probe` pair, 2026-11-12).
+The reference solution is `../grey_zerotier/` (public: `../grey-zerotier-public/`); it stays as the differential oracle. Baseline to beat: the RAM and the code that the reference adds; the figures are in `README-MORE.md`, "Status".
 
 
 --
@@ -49,7 +49,7 @@ Each item is closed with one line: what was tried, on which code, the result, an
   statement: "Static bound on stack depth and on total RAM (no recursion, no heap, bounded loops)"
   status: >-
     🔄 RAM: all state is one `struct ztl_leaf`, 7,136 B on the target, pinned by `_Static_assert`
-    (D-4); no heap. Loops: each of the 34 has a proved bound (T7). No recursion (by reading; no tool
+    (D-4); no heap. Loops: each of the 36 has a proved bound (T7). No recursion (by reading; no tool
     states it). Stack: per function from `-fstack-usage`, summed by hand along the call graph (D-4).
     🌱 a tool for the stack sum, interrupts included (V-12)
 - id: T3
@@ -81,7 +81,7 @@ Each item is closed with one line: what was tried, on which code, the result, an
 - id: T7
   statement: "Functions always terminates in finite time for any input"
   status: >-
-    ✅ each of the 34 loops has a bound that WP proves (loop variant); no function calls itself and
+    ✅ each of the 36 loops has a bound that WP proves (loop variant); no function calls itself and
     none calls outside the leaf (the target build fails on any undefined symbol), so every call
     returns (L-4). ⚠️ A bound in loop rounds, not in seconds: no timing statement (V-23)
 - id: T8
@@ -134,7 +134,7 @@ Each item is closed with one line: what was tried, on which code, the result, an
   item: "In-place packet processing in one contiguous buffer; no 2 KB packets by value on the stack"
   status: >-
     🔄 unfragmented packets are processed in the datagram buffer; a fragmented packet is joined in
-    its reassembly slot; largest stack frame so far 96 B (`ztl_rx`)
+    its reassembly slot; largest stack frame 176 B (`ztl_salsa2012_block`); no packet lies on the stack
 - id: D-4
   item: >-
     Memory budget table: every struct, count and size, checked at build time (`_Static_assert`)
@@ -156,7 +156,7 @@ Each item is closed with one line: what was tried, on which code, the result, an
     only for the AES keys, `Peer.cpp:65-67`). ⚠️ Cost: version 13 features are lost (encrypted
     HELLO, ephemeral keying), and Salsa20/12 is the legacy suite. ✅ [MEASURED] 2026-11-12, host
     loopback: a leaf core with `ZT_PROTO_VERSION 11`, `aesKeysIfSupported()` always null and
-    `abort()` on both AES code paths passes `tests/interop.py` normal (1500 B and 69 B frames, 7
+    `abort()` on both AES code paths passes the reference solution's `../grey_zerotier/tests/interop.py` normal (1500 B and 69 B frames, 7
     peers), deny and tamper against the unchanged version-13 reference core. The leaf must do two
     things: announce version 11 (so that peers send suite 1) and never choose AES itself (upstream
     chooses by the remote's version). Limit: this ran the reference core, not the C leaf; peers were
@@ -167,7 +167,7 @@ Each item is closed with one line: what was tried, on which code, the result, an
     bit 7 with suite 1 is the old "encrypted" flag, set by every peer up to 1.14 on each encrypted
     packet: accept it. ⚠️ Peers choose the suite from the learned version; incoming AES packets are
     still possible and the classifier drops them. Grey accepts the loss of encrypted HELLO and
-    ephemeral keying (A-ztram-s2-16). 🌱 Next: same test on the board network; cycles per packet
+    ephemeral keying (A-ztram-s2-16). ✅ The C leaf itself now runs on the board network (D-6). 🌱 Cycles per packet
     (AES-GMAC-SIV is today's main cost, ≈ 1 M cycles per packet).
   status: "🔄"
 - id: D-6
@@ -183,7 +183,9 @@ Each item is closed with one line: what was tried, on which code, the result, an
     C-rusted discipline: own no-op annotation header (optional, bounds, exclusive/shared, init,
     nominal types); checked by the open tools below. ECLAIR evaluation: letter in
     `../dev-docs/email-draft-bugseng-c-rusted.md`
-  status: "🌱"
+  status: >-
+    🔄 `include/ztl/annot.h` exists (no nominal types yet) and every public header uses it; no tool
+    checks the annotations themselves (P-16)
 - id: D-8
   item: >-
     No public-key cryptography on the device (Grey, A-ztram-s1-1/-2, 2026-11-13): fixed-function
@@ -226,7 +228,7 @@ Order = recommended order of trial. "Have" = installed on this host on 2026-11-1
     ♻️ `proofs/wire_cbmc.c`: `ztl_classify()` for every buffer of 0..2049 bytes, exact-size
     allocation: 506 checks, 0 failed; result equal to a model of the reference receive path in both
     directions, two listed differences (AES); 11 of 11 cover targets. Reassembly at 64 B (4
-    harnesses) and gate at 40 B (891 checks, 2 h) pass; gate at 64 B: no result in 6 h. Cryptography
+    harnesses) and gate at 40 B (891 checks, 1 h 25 min) pass; gate at 64 B: no result in 6 h. Cryptography
     (`proofs/crypto_cbmc.c`): limb-limit induction step passes in seconds (runner step `cbmcpoly`);
     equivalence with reference-form models and seal-then-open: no result after 4 h. `run.sh mutate`:
     102 deliberate errors in 114 tool runs (CBMC, WP, test vectors, protocol test), all rejected
@@ -332,7 +334,9 @@ Order = recommended order of trial. "Have" = installed on this host on 2026-11-1
   class: "Testing, not proof"
   can_prove_here: "Same outputs for the same packet traces; fuzz corpus"
   have: "✅ host tests exist"
-  status: "🌱"
+  status: >-
+    🔄 `tests/host/interop.py`: the leaf against the reference node on loopback, five cases pass (E-6
+    in `reports/PROOFS.md`). 🌱 Same packet traces through both; fuzz corpus
 - id: P-16
   tool: "ECLAIR C-rusted Analyzer"
   class: "Commercial"
@@ -340,12 +344,12 @@ Order = recommended order of trial. "Have" = installed on this host on 2026-11-1
   have: "🔴 licence"
   status: "📞 letter"
 - id: P-17
-  tool: "Wolfram Engine 15.0 (`wolframscript` on `user@big-prover-host`, installed by Grey 2026-11-13)"
+  tool: "Wolfram Engine 15.0 (`wolframscript` on the large prover host, installed 2026-11-13)"
   class: "Computer algebra, not a proof checker"
   can_prove_here: >-
     Arithmetic inside the cryptography (V-10). Use it to FIND certificates (cofactors, bounds,
     witnesses) that a prover then checks
-  have: "✅ on big-prover-host"
+  have: "✅ on the large prover host"
   status: >-
     ♻️ `proofs/poly_identity.wl`: the folding identity of the Poly1305 block step holds (expansion
     gives 0); worst cases under the contract: sums 2^58.4 of 64 bits, last carry 30.4 bits, limb 1
@@ -356,7 +360,7 @@ Order = recommended order of trial. "Have" = installed on this host on 2026-11-1
 
 ## Further proof targets
 
-From two independent reviews (`reports/PROOFS.md`, "Independent reviews"): V-1..V-12 from review 1, V-13..V-23 from review 2. Difficulty L/M/H. Order accepted by Grey (A-ztram-s2-22): settle rule questions (V-13, D-5a) ✅, thin memory and layout budget (D-4, V-17) 🔄, reassembly (V-4) ♻️, authentication gate with a narrow crypto interface (V-1) 🔄, then real Salsa20/12 and Poly1305 (V-10) 🌱.
+From two independent reviews (`reports/PROOFS.md`, "Independent reviews"): V-1..V-12 from review 1, V-13..V-23 from review 2. Difficulty L/M/H. Order accepted by Grey (A-ztram-s2-22): settle rule questions (V-13, D-5a) ✅, thin memory and layout budget (D-4, V-17) 🔄, reassembly (V-4) ♻️, authentication gate with a narrow crypto interface (V-1) ♻️, then real Salsa20/12 and Poly1305 (V-10) 🔄.
 
 ```yaml
 - id: V-1
@@ -372,7 +376,7 @@ From two independent reviews (`reports/PROOFS.md`, "Independent reviews"): V-1..
     contract (`src/auth.c`); the delivered body is bound to the authenticated packet; the suite rule
     is applied to the complete packet. ⚠️ The primitive's contract does not say WHEN it answers yes
     (test vectors do). CBMC cross-check (`proofs/rx_cbmc.c`): cover 8 of 8, main run ✅ at 40 B on
-    current code (891 checks, 1 h 52 min), ❗ no result at 64 B after 6 h. ✅ Extended to the whole
+    current code (891 checks, 1 h 25 min, CBMC 6.6.0), ❗ no result at 64 B after 6 h. ✅ Extended to the whole
     leaf: the contract of `ztl_input()` says that a reply or a frame comes only after the gate's one
     call that answered yes, and its list of what may change leaves out the own address, the pinned
     peers, their keys, the public key, the network ID and the controller index (L-23, L-24). 🔴
@@ -594,7 +598,7 @@ From two independent reviews (`reports/PROOFS.md`, "Independent reviews"): V-1..
     keeps the proved behaviour
   tool: "Link map, call graph, VST/CompCert samples"
   difficulty: "M–H"
-  status: "🔴"
+  status: "🌱 first step: a call-graph tool for the stack sum (T2, D-4); the rest 🔴"
 ```
 
 ## Proof method (learned so far)
@@ -605,7 +609,7 @@ From two independent reviews (`reports/PROOFS.md`, "Independent reviews"): V-1..
 - ⚠️ In an ACSL assertion, a local variable inside `\at(..., Pre)` is out of scope: write `\at(buf[\at(expr, Here)], Pre)`.
 - ⚠️ CBMC with a 32-bit model and host headers gives `uint64_t` 32 bits: preprocess with the target compiler.
 - ⚠️ No C library calls in the leaf (own bounded copy loops): the provers then analyse the code that runs, and CBMC's `memcpy` model was the first cause of the memory blow-up.
-- ⚠️ Intended unsigned wrap-around (clock subtraction) is marked with `#pragma CPROVER check disable "unsigned-overflow"` on that one line; cryptography will need its own profile for this check.
+- ⚠️ No intended unsigned wrap-around in `src/`: the clock difference is `(2^32 + now - then) % 2^32` in 64-bit arithmetic. `#pragma CPROVER check disable "unsigned-overflow"` is left only in two CBMC harnesses (`proofs/reasm_cbmc.c`, `proofs/crypto_cbmc.c`), on the lines that model a wrap.
 - ♻️ **Arithmetic without wrap, written as arithmetic.** WP runs with `-warn-unsigned-overflow -warn-unsigned-downcast`. Bytes to words as `p[0] + 256 * p[1] + ...`; limbs with `/` and `%` by powers of two; a result modulo 2^32 as `((uint64_t)a + b) % 4294967296`; a rotation as low bits times 2^c plus high bits. The target compiler emits the same loads, adds and `ror`. The provers then get linear arithmetic and prove value statements, where shifts and masks time out.
 - ♻️ **Put the witness into the contract.** "x is a multiple of p" and "there is a k" make the prover search and gave unstable results (the same goal passed and timed out). State the equality with the multiplier named; where it is not a program value, return it through a ghost parameter (`/*@ ghost (uint64_t \ghost *carry) */`). 🥦 Where the witness is not obvious, find it with computer algebra (P-17).
 - ♻️ In value contracts use a macro for a sum, not an ACSL logic function: the prover need not unfold a definition through the memory model.
@@ -614,7 +618,7 @@ From two independent reviews (`reports/PROOFS.md`, "Independent reviews"): V-1..
 - ⚠️ At `-Os` GCC turns a zeroing loop or a zero initializer into a call to `memset`; the runner fails on any undefined symbol that is not `ztl_`. The wipe loops carry an assembly barrier that also stops this.
 - ⚠️ WP has no notion of "not initialized": a read of a never-written field is some integer to it. Do not read fields of unused entries.
 - A second runner copy (`ZTL_TAG`) keeps its results apart: remote directory `ztl<TAG>`, local `proofs/out-tag<TAG>/`.
-- All prover runs go through `proofs/on-remote.sh` (default `prover-host`) and `proofs/remote.sh` (default `user@big-prover-host`); none on the workstation.
+- All prover runs go through `proofs/on-remote.sh` (host: `ZTL_REMOTE` in the local file `.env`) and `proofs/remote.sh` (host: `ZTL_REMOTE_BIG`); none on the workstation.
 
 ## Supply chain
 

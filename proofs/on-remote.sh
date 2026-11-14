@@ -4,7 +4,7 @@
 # limit; it keeps running if this terminal or the ssh link goes away.
 # Usage: proofs/on-remote.sh start [run.sh arguments...]   copy sources, start
 #        proofs/on-remote.sh status | stop | fetch | wait
-#   ZTL_REMOTE  ssh target (default prover-host): needs passwordless sudo, cbmc, the
+#   ZTL_REMOTE  ssh target, from .env (no default): needs passwordless sudo, cbmc, the
 #               opam switch "ztl" (proofs/opam-setup.sh) and the ARM toolchain
 #               in ~/ztl-sdk/arm-zephyr-eabi
 #   ZTL_MEM     memory limit for the run (default 20G)
@@ -19,7 +19,13 @@
 # "wait" polls until the unit ends, then fetches.
 set -u
 cd "$(dirname "$0")/.."
-H=${ZTL_REMOTE:-prover-host}; MEM=${ZTL_MEM:-20G}; TMO=${ZTL_TIME:-7200}; D=ztl${ZTL_TAG:-}; U=ztl-run${ZTL_TAG:-}
+# The ssh target comes from the file .env beside this repository's README (not in Git;
+# see .env.example), so that no host name is in the sources and none is a machine-wide
+# setting. A value on the command line (ZTL_REMOTE=... proofs/on-remote.sh ...) wins for one call.
+envget() { [ -f .env ] && sed -n "s/^$1=//p" .env | tail -n 1; }
+H=${ZTL_REMOTE:-$(envget ZTL_REMOTE)}
+[ -n "$H" ] || { echo "on-remote.sh: set ZTL_REMOTE=<ssh target> in .env (see .env.example)"; exit 2; }
+MEM=${ZTL_MEM:-20G}; TMO=${ZTL_TIME:-7200}; D=ztl${ZTL_TAG:-}; U=ztl-run${ZTL_TAG:-}
 # Run a command on the remote host; the exit status is that of ssh (grep
 # alone would report failure whenever the command prints nothing).
 r() { ssh -o BatchMode=yes "$H" "$@" 2>&1 | { grep -v '^Pseudo-terminal' || true; }; return "${PIPESTATUS[0]}"; }

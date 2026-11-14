@@ -1,6 +1,6 @@
 # Checks and proofs attempted
 
-State: 2026-11-13, after two rounds of independent review of the receive path and the cryptography; the protocol layer (last section of attempts) had one review round by two models, read only, with no run of any tool, before it got its contracts. This report lists every check and proof that was tried on the C leaf, in plain words: what was asked, which tool answered, the result, and what the result does not show. No prover runs on the workstation. Run them on another host with `proofs/on-remote.sh start` then `proofs/on-remote.sh wait` (a few minutes), and `proofs/on-remote.sh start mutate` for the deliberate errors; exit status 0 of `wait` means every tool ran and reported the expected result. The large CBMC harnesses run one per unit with `proofs/remote.sh`. The chapter [List of proofs](#list-of-proofs) is the short form: every statement that a tool proves, with its number. Every change that made a contract or a check stronger is listed, with the wrong program it would have accepted before, in the project workspace (`dev-docs/improvements-applied.md`).
+State: 2026-11-13, after two rounds of independent review of the receive path and the cryptography; the protocol layer (last section of attempts) had one review round by two models, read only, with no run of any tool, before it got its contracts. This report lists every check and proof that was tried on the C leaf, in plain words: what was asked, which tool answered, the result, and what the result does not show. No prover runs on the workstation. Run them on another host with `proofs/on-remote.sh start` then `proofs/on-remote.sh wait` (about half an hour), and `proofs/on-remote.sh start mutate` for the deliberate errors; exit status 0 of `wait` means every tool ran and reported the expected result. The large CBMC harnesses run one per unit with `proofs/remote.sh`. The chapter [List of proofs](#list-of-proofs) is the short form: every statement that a tool proves, with its number. Every change that made a contract or a check stronger is listed, with the wrong program it would have accepted before, in the project workspace (`dev-docs/improvements-applied.md`).
 
 ## What is under test
 
@@ -60,7 +60,7 @@ Every statement below is proved by a tool for every input that its contract allo
       tool: "WP"
     - id: L-4
       statement: >-
-        Every loop ends (each of the 34 loops has a proved bound) and no function calls itself:
+        Every loop ends (each of the 36 loops has a proved bound) and no function calls itself:
         every call returns
       tool: "WP (loop variants); no recursion in the code"
     - id: L-5
@@ -142,7 +142,7 @@ Every statement below is proved by a tool for every input that its contract allo
       tool: "WP 248 goals"
     - id: L-18
       statement: >-
-        Poly1305: the five limbs stay inside their limits for a message of any length, so no
+        Poly1305: the five limbs stay inside their limits for a message of any length up to the packet size (2,048 bytes), so no
         product, sum or carry leaves its type
       tool: "WP 572 goals; CBMC induction step, 1,720 checks"
     - id: L-19
@@ -160,12 +160,12 @@ Every statement below is proved by a tool for every input that its contract allo
   proved:
     - id: L-21
       statement: >-
-        LZ4 decoder: for every block and every output size, no access outside the block or the
+        LZ4 decoder: for every block and every output size up to 2,048 bytes, no access outside the block or the
         output, and no match that copies from before the start of the output
       tool: "WP 133 goals"
     - id: L-22
       statement: >-
-        Dictionary reader: for every dictionary and key, no access outside the dictionary, the key
+        Dictionary reader: for every dictionary up to 2,048 bytes and every key up to 8 bytes, no access outside the dictionary, the key
         or the value buffer
       tool: "WP 267 goals"
     - id: L-23
@@ -259,12 +259,9 @@ Each proof holds under these assumptions: the caller meets the stated preconditi
     contents, length 0 to 2049.
   tool: "Frama-C 33.0 Eva"
   result: >-
-    ✅ 0 run-time alarms; 7 preconditions and 1 assertion valid; all 61 statements of the 3 analysed
-    functions reached.
+    ✅ 0 run-time alarms; 9 preconditions valid; all 62 statements of the 4 analysed functions reached.
   does_not_show: >-
-    The three outcome rules: Eva cannot decide which rule applies to unknown bytes. Its log has 18
-    "postcondition ... behaviour may be inactive" warnings for them; these are not evaluated and the
-    runner ignores exactly this kind of warning. Reads between `len` and the end of its fixed
+    The three outcome rules: Eva cannot decide which rule applies to unknown bytes. Its log has 20 "postcondition ... behaviour may be inactive" warnings for them and 2 "postcondition got status unknown" for the packet number's value; these are not evaluated and the runner ignores exactly these two kinds of warning. Reads between `len` and the end of its fixed
     2049-byte array.
 - id: A-5
   asked: >-
@@ -302,10 +299,10 @@ Each proof holds under these assumptions: the caller meets the stated preconditi
     GCC 14.3 for Cortex-M7, `-Wall -Wextra -Wpedantic -Werror -fstack-usage` (`proofs/run.sh
     target`)
   result: "✅ No warnings; 196 bytes of code, 32 bytes of stack, static."
-  does_not_show: "Stack of the whole program (only one function exists)."
+  does_not_show: "Stack of the whole program (for the receive path: D-4 of `CHECKLIST.md`)."
 ```
 
-Which tool caught which error (first five errors, measured once by hand before `mutate` existed): CBMC caught all five. WP caught four; it missed the byte-order error because the contract leaves the packet number's value to CBMC. Eva caught none, because none is a run-time error in its fixed-size array; its job here is the absence of crashes.
+Which tool caught which error (first five errors, measured once by hand before `mutate` existed): CBMC caught all five. WP caught four; it missed the byte-order error because the contract then left the packet number's value to CBMC (it states the value now: A-5). Eva caught none, because none is a run-time error in its fixed-size array; its job here is the absence of crashes.
 
 ## Attempts on reassembly
 
@@ -416,9 +413,7 @@ The module is built from small functions, each with its own contract (`src/reasm
     input: the same properties, stated a second time in the harness (`proofs/rx_cbmc.c`).
   tool: "CBMC, packet size reduced"
   result: >-
-    ✅ At 40-byte packets, current code: 891 checks, 0 failed, after 1 h 52 min of solving (CBMC
-    5.95.1). Reachability: 8 of 8 outcomes reached. ❗ At 64-byte packets no result: 50-minute limit
-    on prover-host, then 6-hour limit on big-prover-host, still solving. An early run gave one useful failure (F-17).
+    ✅ At 40-byte packets, current code (after F-36): 891 checks, 0 failed, 1 h 25 min in all (CBMC 6.6.0). The code before F-36 gave the same result with CBMC 5.95.1 (1 h 52 min of solving). Reachability: 8 of 8 outcomes reached. ❗ At 64-byte packets no result: 50-minute limit on the prover host, then 6-hour limit on the large one, still solving. An early run gave one useful failure (F-17).
   does_not_show: >-
     Packets above 40 bytes: 40 bytes hold a header and 12 payload bytes, so a head and a fragment
     that join are both near their smallest size. The full size rests on WP (C-1) and the deliberate
@@ -522,7 +517,7 @@ The code is written in an unusual style, for the provers. There is no intended w
     sixteen named words, shifts, wrap-around), for every key, IV and block number?
   tool: "CBMC (`-DH_SALSA`)"
   result: >-
-    ❗ No result: stopped by the 4-hour limit on big-prover-host, still solving. Two forms of the same 12 rounds
+    ❗ No result: stopped by the 4-hour limit on the large prover host, still solving. Two forms of the same 12 rounds
     of add, rotate, XOR are hard for a SAT solver to recognise as equal. 🌱 Next attempt: compare one
     double round, not the whole function (queued, see "does not show").
   does_not_show: "Everything."
@@ -532,7 +527,7 @@ The code is written in an unusual style, for the provers. There is no intended w
     key and every message of 0 to 33 bytes.
   tool: "CBMC (`-DH_POLY`)"
   result: >-
-    ❗ No result: stopped by the 4-hour limit on big-prover-host, still solving. 🌱 Next attempt: compare one
+    ❗ No result: stopped by the 4-hour limit on the large prover host, still solving. 🌱 Next attempt: compare one
     block step from any limbs inside the limits (queued).
   does_not_show: "Everything."
 - id: D-8
@@ -540,7 +535,7 @@ The code is written in an unusual style, for the provers. There is no intended w
     Seal then open with the same key gives "yes" and the original payload, for every key and every
     packet of 28 to 96 bytes in both suites.
   tool: "CBMC (`-DH_ROUNDTRIP`, packet size 96)"
-  result: "❗ No result: stopped by the 4-hour limit on big-prover-host at 38 GB (limit 40 GB), still solving."
+  result: "❗ No result: stopped by the 4-hour limit on the large prover host at 38 GB (limit 40 GB), still solving."
   does_not_show: >-
     Not a statement about forgery: that a changed packet is refused cannot be proved this way (a MAC
     can be met by chance, with probability 2^-64 per try).
@@ -705,7 +700,7 @@ The layer was written and tested first (E-5, E-6), then given contracts (E-9). F
     errors are in both groups.
   tool: "Mutation step"
   result: >-
-    ✅ 52 of 52 rejected by the tool named for each, in 58 tool runs. The whole list of all chapters,
+    ✅ 52 of 52 rejected, in 58 tool runs. A tool run is one line of the list in `proofs/run.sh`: one error with the tool named for it. (The ten classifier errors of A-6 name three tools in one line; such a line counts as rejected when at least one of the three reports the error.) The whole list of all chapters,
     in one run on the code of this report: 102 errors, 114 tool runs, every one rejected. One
     survived at first and two more were reported wrongly (F-29, F-30); two did not apply for a time
     (F-35).
@@ -868,8 +863,7 @@ The layer was written and tested first (E-5, E-6), then given contracts (E-9). F
     The first reassembly proof ran on the workstation at full packet size and used all its memory;
     the session had to be restarted.
   consequence: >-
-    Heavy proofs run on another host with a memory limit per process (`proofs/remote.sh`); every
-    local prover process has a 6 GB limit.
+    Heavy proofs run on another host with a memory limit per process (`proofs/remote.sh`); no prover runs on the workstation (the runner refuses).
 - id: F-13
   happened: >-
     With the C library's `memcpy` and with harness datagrams of unknown size, CBMC needed more than

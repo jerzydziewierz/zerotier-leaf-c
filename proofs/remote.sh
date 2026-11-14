@@ -3,7 +3,8 @@
 # systemd unit with a memory limit and a time limit, so that a run that grows
 # too large stops alone.
 # Usage: proofs/remote.sh start|status|stop|fetch [harness...]
-#   ZTL_REMOTE   ssh target (default user@big-prover-host); needs passwordless sudo, cbmc
+#   ZTL_REMOTE_BIG  ssh target of a host with much memory, from .env (no default; without it
+#                ZTL_REMOTE is used); needs passwordless sudo, cbmc
 #   ZTL_MEM      memory limit per harness (default 96G)
 #   ZTL_TIME     time limit per harness in seconds (default 14400)
 #   ZTL_DEFS     extra compiler definitions, for example -DZTL_PKT_MAX=256u
@@ -16,7 +17,13 @@
 # Results: proofs/out-remote-<harness>.txt after "fetch".
 set -u
 cd "$(dirname "$0")/.."
-H=${ZTL_REMOTE:-user@big-prover-host}; MEM=${ZTL_MEM:-96G}; TMO=${ZTL_TIME:-14400}; DEFS=${ZTL_DEFS:-}
+# The ssh target comes from the file .env beside this repository's README (not in Git;
+# see .env.example), so that no host name is in the sources and none is a machine-wide
+# setting. A value on the command line (ZTL_REMOTE=... proofs/remote.sh ...) wins for one call.
+envget() { [ -f .env ] && sed -n "s/^$1=//p" .env | tail -n 1; }
+H=${ZTL_REMOTE_BIG:-$(envget ZTL_REMOTE_BIG)}; H=${H:-${ZTL_REMOTE:-$(envget ZTL_REMOTE)}}
+[ -n "$H" ] || { echo "remote.sh: set ZTL_REMOTE_BIG=<ssh target> in .env (see .env.example)"; exit 2; }
+MEM=${ZTL_MEM:-96G}; TMO=${ZTL_TIME:-14400}; DEFS=${ZTL_DEFS:-}
 D=ztl-proofs
 cmd=${1:-status}; shift || true
 hs=("$@"); [ ${#hs[@]} -eq 0 ] && hs=(H_STEP H_ORDER H_DUP H_TIMEOUT H_GATE)

@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 500" width="1200" height="500" font-family="DejaVu Sans, Arial, sans-serif" font-size="15">
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0b0b0b"/></marker></defs>
+<rect width="1200" height="500" fill="#fcfcfb"/>
+<text x="30" y="36" fill="#0b0b0b" font-size="18" text-anchor="start" font-weight="bold">Two networks at once: the underlay carries datagrams, the overlay is the virtual Ethernet inside them</text>
+<rect x="30" y="60" width="1140" height="150" rx="10" fill="#dce9fa" stroke="#2a78d6" stroke-width="1.5"/><text x="46" y="84" fill="#0b0b0b" font-size="15" text-anchor="start" font-weight="bold">OVERLAY: one virtual Ethernet segment (the ZeroTier network). Every member has an address here, for example 10.9.0.x</text>
+<rect x="80" y="104" width="260" height="84" rx="8" fill="#fcfcfb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="92" y="128" fill="#0b0b0b" font-weight="bold">board (this leaf)</text>
+<text x="92" y="150" fill="#52514e" font-size="13.5">virtual interface 10.9.0.6</text>
+<text x="92" y="169" fill="#52514e" font-size="13.5">sees plain Ethernet frames</text>
+<rect x="470" y="104" width="260" height="84" rx="8" fill="#fcfcfb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="482" y="128" fill="#0b0b0b" font-weight="bold">laptop (stock ZeroTier)</text>
+<text x="482" y="150" fill="#52514e" font-size="13.5">virtual interface 10.9.0.5</text>
+<text x="482" y="169" fill="#52514e" font-size="13.5">sees plain Ethernet frames</text>
+<rect x="860" y="104" width="260" height="84" rx="8" fill="#fcfcfb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="872" y="128" fill="#0b0b0b" font-weight="bold">controller (stock ZeroTier)</text>
+<text x="872" y="150" fill="#52514e" font-size="13.5">virtual interface 10.9.0.1</text>
+<text x="872" y="169" fill="#52514e" font-size="13.5">sees plain Ethernet frames</text>
+<line x1="340" y1="146" x2="470" y2="146" stroke="#2a78d6" stroke-width="2"  marker-end="url(#a)" marker-start='url(#a)'/>
+<line x1="730" y1="146" x2="860" y2="146" stroke="#2a78d6" stroke-width="2"  marker-end="url(#a)" marker-start='url(#a)'/>
+<text x="600" y="236" fill="#52514e" font-size="14" text-anchor="middle" font-weight="normal">each frame is encrypted, authenticated and put into a UDP datagram: that is a ZeroTier packet</text>
+<line x1="210" y1="214" x2="210" y2="268" stroke="#0b0b0b" stroke-width="2" stroke-dasharray='7 5' marker-end="url(#a)" />
+<line x1="600" y1="244" x2="600" y2="268" stroke="#0b0b0b" stroke-width="2" stroke-dasharray='7 5' marker-end="url(#a)" />
+<line x1="990" y1="214" x2="990" y2="268" stroke="#0b0b0b" stroke-width="2" stroke-dasharray='7 5' marker-end="url(#a)" />
+<rect x="30" y="272" width="1140" height="150" rx="10" fill="#fbe3d8" stroke="#eb6834" stroke-width="1.5"/><text x="46" y="296" fill="#0b0b0b" font-size="15" text-anchor="start" font-weight="bold">UNDERLAY: the real network (Ethernet, USB, Wi-Fi, the Internet). Each node has another address here, for example 192.0.2.x</text>
+<rect x="80" y="316" width="260" height="84" rx="8" fill="#fcfcfb" stroke="#eb6834" stroke-width="1.5"/>
+<text x="92" y="340" fill="#0b0b0b" font-weight="bold">board</text>
+<text x="92" y="362" fill="#52514e" font-size="13.5">real interface 192.0.2.6</text>
+<text x="92" y="381" fill="#52514e" font-size="13.5">sends and receives UDP, port 9993</text>
+<rect x="470" y="316" width="260" height="84" rx="8" fill="#fcfcfb" stroke="#eb6834" stroke-width="1.5"/>
+<text x="482" y="340" fill="#0b0b0b" font-weight="bold">laptop</text>
+<text x="482" y="362" fill="#52514e" font-size="13.5">real interface 192.0.2.5</text>
+<text x="482" y="381" fill="#52514e" font-size="13.5">sends and receives UDP, port 9993</text>
+<rect x="860" y="316" width="260" height="84" rx="8" fill="#fcfcfb" stroke="#eb6834" stroke-width="1.5"/>
+<text x="872" y="340" fill="#0b0b0b" font-weight="bold">controller</text>
+<text x="872" y="362" fill="#52514e" font-size="13.5">real interface 192.0.2.4</text>
+<text x="872" y="381" fill="#52514e" font-size="13.5">sends and receives UDP, port 9993</text>
+<line x1="340" y1="358" x2="470" y2="358" stroke="#eb6834" stroke-width="2"  marker-end="url(#a)" marker-start='url(#a)'/>
+<line x1="730" y1="358" x2="860" y2="358" stroke="#eb6834" stroke-width="2"  marker-end="url(#a)" marker-start='url(#a)'/>
+<text x="30" y="456" fill="#52514e" font-size="14" text-anchor="start" font-weight="normal">A program on the board that opens a TCP connection to 10.9.0.5 uses the overlay. It does not know that its frames travel as UDP datagrams</text>
+<text x="30" y="476" fill="#52514e" font-size="14" text-anchor="start" font-weight="normal">between 192.0.2.6 and 192.0.2.5. Someone who listens on the underlay sees only encrypted datagrams.</text>
+</svg>

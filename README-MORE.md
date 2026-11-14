@@ -7,7 +7,7 @@ This is one part of a larger project: ZeroTier overlay networking on the Zephyr 
   where: "https://github.com/jerzydziewierz/zephyr-zerotier-leaf"
   what: >-
     Restricted ZeroTier One 1.16.2 C++ core as a Zephyr module, tested on hardware with stock
-    ZeroTier peers. About 110 KB of added RAM.
+    ZeroTier peers. About 115 KB of added RAM and 454 KB of added code (see "Status").
 - part: "This repository"
   where: "`zerotier-leaf-c`"
   what: >-
@@ -21,7 +21,7 @@ This is one part of a larger project: ZeroTier overlay networking on the Zephyr 
   what: "Measured results and reports."
 ```
 
-The goal of this part is twofold: reduce RAM far below the reference solution, and find out how far several theorem-proving methods get on real embedded network code. The plan is to show both solutions side by side in the public repository when this one can talk to a network.
+The goal of this part is twofold: reduce RAM far below the reference solution, and find out how far several theorem-proving methods get on real embedded network code. The plan is to show both solutions side by side in the public repository.
 
 Paths such as `../grey_zerotier/` and `../dl/sdk/` in scripts and documents point into the project workspace, in which this repository is one folder. The proof runner needs the Zephyr SDK ARM compiler from there (or `ZTL_CC`).
 
@@ -54,7 +54,7 @@ Paths such as `../grey_zerotier/` and `../dl/sdk/` in scripts and documents poin
 - module: "LZ4 block decoder (a controller always compresses the configuration)"
   file: "`src/lz4.c`"
   state: >-
-    ✅ proved with WP for every input: no access outside either buffer, no wrap, every loop ends;
+    ✅ proved with WP for every input up to the packet size: no access outside either buffer, no wrap, every loop ends;
     same bytes as the reference on 58 blocks made by the reference
 - module: "Dictionary reader (configuration format)"
   file: "`src/dict.c`"
@@ -75,19 +75,36 @@ Paths such as `../grey_zerotier/` and `../dl/sdk/` in scripts and documents poin
   state: >-
     ✅ used by the loopback test. The key agreement is the reference's code: a trusted component, not
     proved
-- module: "Zephyr adapter (virtual Ethernet interface, one thread, no heap)"
+- module: "Zephyr adapter (virtual Ethernet interface, one thread of its own, one mutex, no heap)"
   file: "`zephyr/`"
   state: >-
     ⏭ runs on the Teensy 4.1 (first run 2026-11-13: member of a network with a stock controller and
     stock peers; ping, Telnet and SSH sessions); no proof, no test of its own, no soak
 ```
 
-Deliberate errors (mutation step): 102 errors in 114 tool runs, every one rejected by the tool that should see it. Measured in a firmware build for the Cortex-M7: code of the leaf 7,694 bytes, Zephyr adapter 2,100 bytes; RAM of the leaf 7,136 bytes (`struct ztl_leaf`), of the whole Zephyr module 15.8 KB with its thread stack and three packet buffers. The reference solution adds about 110 KB of RAM and 400 KB of code.
+Deliberate errors (mutation step): 102 errors in 114 tool runs, every one rejected by the tool that should see it. Measured in a firmware build for the Cortex-M7 (Zephyr's compiler options; the runner's own build of the nine files gives 7,688): code of the leaf 7,694 bytes, Zephyr adapter 2,100 bytes; RAM of the leaf 7,136 bytes (`struct ztl_leaf`), of the whole Zephyr module 15.8 KB with its thread stack and three packet buffers.
+
+Size against the reference solution, measured in one application (Teensy 4.1, Zephyr 4.4.2, `-Os`; the same application built without ZeroTier, with this leaf, and with the reference module; 2026-11-14). "Added" is the difference to the build without ZeroTier; RAM is initialised data plus zeroed memory.
+
+```yaml
+- solution: "this leaf (C, with its Zephyr adapter and shell command)"
+  code_added_bytes: 11,260
+  ram_added_bytes: 20,180
+  ram_holds: "leaf state 7,136; thread stack 3 KB; packet, frame and datagram buffers 5 KB; 4.4 KB outside the module, not broken down"
+- solution: "reference (restricted ZeroTier One 1.16.2 core in C++, with its Zephyr adapter and shell command)"
+  code_added_bytes: 453,760
+  ram_added_bytes: 115,248
+  ram_holds: "heap 64 KB; worker stack 26 KB; queues and tables"
+- ratio: "the leaf adds 1/40 of the code and 1/5.7 of the RAM"
+```
+
+The reference build has IPv6 in the network stack, because its module needs that option to build (it then switches IPv6 off on its interface); its figures are against a build without ZeroTier that has IPv6 too, so the cost of IPv6 (15,384 bytes of code, 1,724 of RAM) is in neither column. The reference figures include the C++ run-time library that only the reference needs.
 
 "Proved" here means: the code meets its written contract, for the tools' model of C. It does not mean that the contract is the right one, that the compiler is correct, or anything about timing. [reports/PROOFS.md](reports/PROOFS.md) lists every check and proof attempted, in plain words, with what each one does not show, and the attempts that failed.
 
 ## Documents
 
+- [reports/TUTORIAL.md](reports/TUTORIAL.md): overlay and underlay, what runs where, and the path of one received packet, with drawings. Start here.
 - [reports/PROOFS.md](reports/PROOFS.md): every proof and check, explained for a reader who is not a specialist; limits; failed attempts.
 - [reports/PROTOCOL.md](reports/PROTOCOL.md): what a stock ZeroTier peer and controller expect from this leaf (messages, timings, configuration, membership), read from the reference source.
 - [CHECKLIST.md](CHECKLIST.md): target theorems, design levers, the list of provers to try and their status, further proof targets, the proof method learned so far.
@@ -101,11 +118,11 @@ proofs/on-remote.sh wait           # wait for the end, copy results back; exit s
 proofs/on-remote.sh status | stop | fetch
 ```
 
-No prover runs on the workstation. `proofs/on-remote.sh` copies the sources to another host (`ZTL_REMOTE`, default `prover-host`) and runs `proofs/run.sh` there as one systemd unit with a memory limit (`ZTL_MEM`, default 20G) and a time limit; `proofs/run.sh` refuses to start otherwise. The host needs `cbmc`, `z3`, `cvc5` (Ubuntu packages), Frama-C with WP and Alt-Ergo in the opam switch `ztl` (`proofs/opam-setup.sh start`, needs apt `graphviz` and `libgmp-dev`), and the Zephyr SDK ARM compiler in `~/ztl-sdk/arm-zephyr-eabi`. Results come back as `proofs/out-<step>.txt`.
+No prover runs on the workstation. `proofs/on-remote.sh` copies the sources to another host (the ssh target `ZTL_REMOTE` in the local file `.env`, which is not in Git: copy `.env.example`; there is no default) and runs `proofs/run.sh` there as one systemd unit with a memory limit (`ZTL_MEM`, default 20G) and a time limit; `proofs/run.sh` refuses to start otherwise. The host needs `cbmc`, `z3`, `cvc5` (Ubuntu packages), Frama-C with WP and Alt-Ergo in the opam switch `ztl` (`proofs/opam-setup.sh start`, needs apt `graphviz` and `libgmp-dev`), and the Zephyr SDK ARM compiler in `~/ztl-sdk/arm-zephyr-eabi`. Results come back as `proofs/out-<step>.txt`.
 
-The CBMC harnesses for reassembly, for the receive gate and for the cryptography are large; they run one per unit through `proofs/remote.sh start|status|stop|fetch` (`ZTL_REMOTE`, default `user@big-prover-host`), at reduced packet size (see `reports/PROOFS.md`).
+The CBMC harnesses for reassembly, for the receive gate and for the cryptography are large; they run one per unit through `proofs/remote.sh start|status|stop|fetch` (ssh target `ZTL_REMOTE_BIG` in `.env`, a host with much memory), at reduced packet size (see `reports/PROOFS.md`).
 
-Host tests (they need no prover; a C compiler, Python 3, and for the first one the reference source and its test node):
+Host tests (they need no prover; a C and a C++ compiler, Python 3, and for the first one the reference source, its test node and `zerotier-idtool`):
 
 ```sh
 tests/host/build.sh <ZeroTier One source tree> /tmp/ztl-host    # leaf_node (with sanitizers) and the provisioning tool

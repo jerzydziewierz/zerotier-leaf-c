@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 700" width="1200" height="700" font-family="DejaVu Sans, Arial, sans-serif" font-size="15">
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0b0b0b"/></marker></defs>
+<rect width="1200" height="700" fill="#fcfcfb"/>
+<text x="30" y="36" fill="#0b0b0b" font-size="18" text-anchor="start" font-weight="bold">What runs where on the board</text>
+<rect x="40" y="60" width="520" height="62" rx="8" fill="#eeedea" stroke="#52514e" stroke-width="1.5"/>
+<text x="52" y="84" fill="#0b0b0b" font-weight="bold">Application: SSH server, shell, your code</text>
+<text x="52" y="106" fill="#52514e" font-size="13.5">ordinary sockets; it sees two network interfaces</text>
+<rect x="40" y="150" width="520" height="62" rx="8" fill="#eeedea" stroke="#52514e" stroke-width="1.5"/>
+<text x="52" y="174" fill="#0b0b0b" font-weight="bold">Zephyr network stack: TCP, UDP, IPv4, ARP</text>
+<text x="52" y="196" fill="#52514e" font-size="13.5">not part of this repository</text>
+<line x1="300" y1="122" x2="300" y2="150" stroke="#0b0b0b" stroke-width="2"  marker-end="url(#a)" marker-start='url(#a)'/>
+<rect x="40" y="250" width="240" height="84" rx="8" fill="#dce9fa" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="52" y="274" fill="#0b0b0b" font-weight="bold">overlay interface</text>
+<text x="52" y="296" fill="#52514e" font-size="13.5">virtual Ethernet device</text>
+<text x="52" y="315" fill="#52514e" font-size="13.5">made by the adapter</text>
+<rect x="320" y="250" width="240" height="84" rx="8" fill="#fbe3d8" stroke="#eb6834" stroke-width="1.5"/>
+<text x="332" y="274" fill="#0b0b0b" font-weight="bold">underlay interface</text>
+<text x="332" y="296" fill="#52514e" font-size="13.5">real Ethernet or USB</text>
+<text x="332" y="315" fill="#52514e" font-size="13.5">driver of the board</text>
+<line x1="160" y1="212" x2="160" y2="250" stroke="#2a78d6" stroke-width="2"  marker-end="url(#a)" marker-start='url(#a)'/>
+<line x1="440" y1="212" x2="440" y2="250" stroke="#eb6834" stroke-width="2"  marker-end="url(#a)" marker-start='url(#a)'/>
+<rect x="40" y="372" width="520" height="104" rx="8" fill="#fcfcfb" stroke="#0b0b0b" stroke-width="1.5"/>
+<text x="52" y="396" fill="#0b0b0b" font-weight="bold">Zephyr adapter (zephyr/ztl_zephyr.c)</text>
+<text x="52" y="418" fill="#52514e" font-size="13.5">one thread of its own, one mutex, one UDP socket on the underlay</text>
+<text x="52" y="437" fill="#52514e" font-size="13.5">knows the UDP address of each pinned peer; keeps the time</text>
+<text x="52" y="456" fill="#52514e" font-size="13.5">no proof, no test of its own</text>
+<line x1="160" y1="334" x2="160" y2="372" stroke="#2a78d6" stroke-width="2"  marker-end="url(#a)" marker-start='url(#a)'/>
+<path d="M 440 372 L 440 334" stroke="#eb6834" stroke-width="2" fill="none" marker-end="url(#a)" marker-start="url(#a)"/><text x="452" y="358" fill="#52514e" font-size="13" text-anchor="start" font-weight="normal">UDP datagrams</text>
+<text x="172" y="358" fill="#52514e" font-size="13" text-anchor="start" font-weight="normal">Ethernet frames</text>
+<rect x="40" y="516" width="520" height="150" rx="8" fill="#d9f0e6" stroke="#1baf7a" stroke-width="1.5"/>
+<text x="52" y="540" fill="#0b0b0b" font-weight="bold">Leaf core (src/*.c, include/ztl/): all of it proved</text>
+<text x="52" y="562" fill="#52514e" font-size="13.5">no input or output, no clock, no heap, no lock</text>
+<text x="52" y="581" fill="#52514e" font-size="13.5">three calls: ztl_input(datagram), ztl_poll(time), ztl_frame_to(frame)</text>
+<text x="52" y="600" fill="#52514e" font-size="13.5">state: one struct ztl_leaf, 7,136 bytes</text>
+<text x="52" y="619" fill="#52514e" font-size="13.5">pinned peers (7 at most) with one 32-byte key each; one network</text>
+<line x1="300" y1="476" x2="300" y2="516" stroke="#0b0b0b" stroke-width="2"  marker-end="url(#a)" marker-start='url(#a)'/>
+<rect x="640" y="60" width="520" height="150" rx="8" fill="#fcfcfb" stroke="#52514e" stroke-width="1.5"/>
+<text x="652" y="84" fill="#0b0b0b" font-weight="bold">On a trusted host, before the firmware is built</text>
+<text x="652" y="106" fill="#52514e" font-size="13.5">the provisioning tool (tools/provision/)</text>
+<text x="652" y="125" fill="#52514e" font-size="13.5">takes the board's identity and each peer's public identity,</text>
+<text x="652" y="144" fill="#52514e" font-size="13.5">computes one pairwise key for each peer (public-key cryptography),</text>
+<text x="652" y="163" fill="#52514e" font-size="13.5">writes them into a header for the firmware</text>
+<text x="652" y="182" fill="#52514e" font-size="13.5">the board itself never does public-key cryptography</text>
+<rect x="640" y="250" width="520" height="226" rx="8" fill="#fcfcfb" stroke="#1baf7a" stroke-width="1.5"/>
+<text x="652" y="274" fill="#0b0b0b" font-weight="bold">Inside the leaf core, bottom to top</text>
+<text x="652" y="296" fill="#52514e" font-size="13.5">leaf.c: messages: HELLO, OK, ECHO, configuration, frames, timers</text>
+<text x="652" y="315" fill="#52514e" font-size="13.5">dict.c: reads the network configuration (text dictionary)</text>
+<text x="652" y="334" fill="#52514e" font-size="13.5">lz4.c: decompresses packets (a controller always compresses)</text>
+<text x="652" y="353" fill="#52514e" font-size="13.5">rx.c: the receive gate: nothing passes without authentication</text>
+<text x="652" y="372" fill="#52514e" font-size="13.5">auth.c: opens and seals a packet: salsa.c (cipher) + poly.c (MAC)</text>
+<text x="652" y="391" fill="#52514e" font-size="13.5">reasm.c: joins a packet that came as two datagrams</text>
+<text x="652" y="410" fill="#52514e" font-size="13.5">wire.c: classifies a datagram: packet head, fragment, or drop</text>
+<path d="M 560 590 C 600 590, 600 363, 640 363" stroke="#52514e" stroke-width="1.5" fill="none" stroke-dasharray="5 4"/><rect x="640" y="516" width="520" height="150" rx="8" fill="#fcfcfb" stroke="#52514e" stroke-width="1.5"/>
+<text x="652" y="540" fill="#0b0b0b" font-weight="bold">The other members of the network</text>
+<text x="652" y="562" fill="#52514e" font-size="13.5">stock ZeroTier programs, not changed</text>
+<text x="652" y="581" fill="#52514e" font-size="13.5">the controller admits the board as a member and sends the configuration:</text>
+<text x="652" y="600" fill="#52514e" font-size="13.5">overlay address, MTU, certificate of membership</text>
+<text x="652" y="619" fill="#52514e" font-size="13.5">peers send and receive frames; all of them are pinned in the board</text>
+</svg>

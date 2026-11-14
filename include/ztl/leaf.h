@@ -4,10 +4,13 @@
  *
  * The leaf does no input or output and keeps no clock. The caller (an
  * adapter for one operating system) owns the UDP socket, knows where each
- * pinned peer is, and calls three functions from one thread:
+ * pinned peer is, and calls three functions, one call at a time:
  *   ztl_input()     for each received UDP payload,
  *   ztl_poll()      regularly (for example every 100 ms) until it returns 0,
  *   ztl_frame_to()  for each Ethernet frame that the host wants to send.
+ * The leaf has no lock of its own, and every proof here is about one call
+ * that nothing interrupts: an adapter with more than one thread must guard
+ * the leaf and the packet buffer (the Zephyr adapter uses one mutex).
  * Each of them can fill one packet buffer of ZTL_PKT_MAX bytes; the caller
  * sends it with ztl_tx_first() and ztl_tx_second().
  */
