@@ -20,7 +20,7 @@ We should re-implement it in such a way that they can be checked, and reasoned a
 
 In the same way in which AI revolution was enabled by re-implementation of restricted (differentiable) function set over real numbers,
 
-We have a restricted set over integers that can be used to implement, maybe not every functionality thinkable, but enough of it to be useful in practice and hold the properties that make it provably correct.
+We can have, and already have, a restricted set of functions over integers that can be used to implement, maybe not every functionality thinkable, but enough of it to be useful in practice and hold the properties that make it provably correct.
 
 
 ## Design in one paragraph
