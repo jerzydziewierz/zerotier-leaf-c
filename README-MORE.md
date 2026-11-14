@@ -107,6 +107,8 @@ Time inside the leaf on the board (i.MX RT1062 at 600 MHz, code in flash, counte
 ## Documents
 
 - [reports/TUTORIAL.md](reports/TUTORIAL.md): overlay and underlay, what runs where, and the path of one received packet, with drawings. Start here.
+- [reports/NOT_PROVEN.md](reports/NOT_PROVEN.md): element by element, what is proved and what is not, as a checklist for a review.
+- [reports/PERFORMANCE.md](reports/PERFORMANCE.md): cycles for each packet, cost against the reference solution, round trip against size, a one-hour run.
 - [reports/PROOFS.md](reports/PROOFS.md): every proof and check, explained for a reader who is not a specialist; limits; failed attempts.
 - [reports/PROTOCOL.md](reports/PROTOCOL.md): what a stock ZeroTier peer and controller expect from this leaf (messages, timings, configuration, membership), read from the reference source.
 - [CHECKLIST.md](CHECKLIST.md): target theorems, design levers, the list of provers to try and their status, further proof targets, the proof method learned so far.
