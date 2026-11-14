@@ -106,7 +106,7 @@ Time inside the leaf on the board (i.MX RT1062 at 600 MHz, code in flash, counte
 
 ## Documents
 
-- [reports/TUTORIAL.md](reports/TUTORIAL.md): overlay and underlay, what runs where, and the path of one received packet, with drawings. Start here.
+- [reports/zerotier-leaf-tutorial-1.md](reports/zerotier-leaf-tutorial-1.md): overlay and underlay, what runs where, the path of one received packet, how a packet is sealed and opened (Salsa20/12, Poly1305), and what a stock node does that this leaf does not; with drawings. Start here.
 - [reports/NOT_PROVEN.md](reports/NOT_PROVEN.md): element by element, what is proved and what is not, as a checklist for a review.
 - [reports/PERFORMANCE.md](reports/PERFORMANCE.md): cycles for each packet, cost against the reference solution, round trip against size, a one-hour run.
 - [reports/PROOFS.md](reports/PROOFS.md): every proof and check, explained for a reader who is not a specialist; limits; failed attempts.

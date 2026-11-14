@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1320 540" width="1320" height="540" font-family="DejaVu Sans, Arial, sans-serif" font-size="15">
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0b0b0b"/></marker></defs>
+<rect width="1320" height="540" fill="#fcfcfb"/>
+<text x="30" y="36" fill="#0b0b0b" font-size="18" text-anchor="start" font-weight="bold">One ZeroTier packet, and how it is sealed (sender) and opened (receiver)</text>
+<rect x="40" y="64" width="150" height="64" rx="6" fill="#eeedea" stroke="#52514e" stroke-width="1.5"/>
+<text x="115.0" y="88" fill="#0b0b0b" font-size="14" text-anchor="middle" font-weight="bold">packet ID</text>
+<text x="115.0" y="107" fill="#52514e" font-size="12.5" text-anchor="middle" font-weight="normal">bytes 0-7</text>
+<text x="115.0" y="122" fill="#52514e" font-size="12" text-anchor="middle" font-weight="normal">also the nonce</text>
+<rect x="190" y="64" width="130" height="64" rx="6" fill="#eeedea" stroke="#52514e" stroke-width="1.5"/>
+<text x="255.0" y="88" fill="#0b0b0b" font-size="14" text-anchor="middle" font-weight="bold">destination</text>
+<text x="255.0" y="107" fill="#52514e" font-size="12.5" text-anchor="middle" font-weight="normal">8-12</text>
+<text x="255.0" y="122" fill="#52514e" font-size="12" text-anchor="middle" font-weight="normal">node address</text>
+<rect x="320" y="64" width="130" height="64" rx="6" fill="#eeedea" stroke="#52514e" stroke-width="1.5"/>
+<text x="385.0" y="88" fill="#0b0b0b" font-size="14" text-anchor="middle" font-weight="bold">source</text>
+<text x="385.0" y="107" fill="#52514e" font-size="12.5" text-anchor="middle" font-weight="normal">13-17</text>
+<text x="385.0" y="122" fill="#52514e" font-size="12" text-anchor="middle" font-weight="normal">node address</text>
+<rect x="450" y="64" width="80" height="64" rx="6" fill="#eeedea" stroke="#52514e" stroke-width="1.5"/>
+<text x="490.0" y="88" fill="#0b0b0b" font-size="14" text-anchor="middle" font-weight="bold">flags</text>
+<text x="490.0" y="107" fill="#52514e" font-size="12.5" text-anchor="middle" font-weight="normal">18</text>
+<text x="490.0" y="122" fill="#52514e" font-size="12" text-anchor="middle" font-weight="normal">suite, hops</text>
+<rect x="530" y="64" width="150" height="64" rx="6" fill="#fbe3d8" stroke="#52514e" stroke-width="1.5"/>
+<text x="605.0" y="88" fill="#0b0b0b" font-size="14" text-anchor="middle" font-weight="bold">MAC</text>
+<text x="605.0" y="107" fill="#52514e" font-size="12.5" text-anchor="middle" font-weight="normal">19-26</text>
+<text x="605.0" y="122" fill="#52514e" font-size="12" text-anchor="middle" font-weight="normal">8 bytes of the tag</text>
+<rect x="680" y="64" width="70" height="64" rx="6" fill="#dce9fa" stroke="#52514e" stroke-width="1.5"/>
+<text x="715.0" y="88" fill="#0b0b0b" font-size="14" text-anchor="middle" font-weight="bold">verb</text>
+<text x="715.0" y="107" fill="#52514e" font-size="12.5" text-anchor="middle" font-weight="normal">27</text>
+<text x="715.0" y="122" fill="#52514e" font-size="12" text-anchor="middle" font-weight="normal"></text>
+<rect x="750" y="64" width="330" height="64" rx="6" fill="#dce9fa" stroke="#52514e" stroke-width="1.5"/>
+<text x="915.0" y="88" fill="#0b0b0b" font-size="14" text-anchor="middle" font-weight="bold">payload</text>
+<text x="915.0" y="107" fill="#52514e" font-size="12.5" text-anchor="middle" font-weight="normal">28 ...</text>
+<text x="915.0" y="122" fill="#52514e" font-size="12" text-anchor="middle" font-weight="normal">up to 2,020 bytes</text>
+<path d="M 40 140 L 40 150 L 530 150 L 530 140" stroke="#52514e" fill="none" stroke-width="1.5"/><text x="285" y="170" fill="#52514e" font-size="13.5" text-anchor="middle" font-weight="normal">not encrypted; mixed into the key of this packet (hop count left out)</text>
+<path d="M 680 140 L 680 150 L 1080 150 L 1080 140" stroke="#2a78d6" fill="none" stroke-width="1.5"/><text x="880" y="170" fill="#2a78d6" font-size="13.5" text-anchor="middle" font-weight="normal">encrypted with Salsa20/12; the MAC is computed over these bytes as sent</text>
+<rect x="40" y="210" width="300" height="74" rx="6" fill="#fcfcfb" stroke="#52514e" stroke-width="1.5"/>
+<text x="52" y="234" fill="#0b0b0b" font-size="14" text-anchor="start" font-weight="bold">pairwise key, 32 bytes</text>
+<text x="52" y="254" fill="#52514e" font-size="13" text-anchor="start" font-weight="normal">one for each pinned peer;</text>
+<text x="52" y="272" fill="#52514e" font-size="13" text-anchor="start" font-weight="normal">written into the firmware</text>
+<rect x="40" y="320" width="300" height="74" rx="6" fill="#eeedea" stroke="#52514e" stroke-width="1.5"/>
+<text x="52" y="344" fill="#0b0b0b" font-size="14" text-anchor="start" font-weight="bold">header: packet ID, addresses,</text>
+<text x="52" y="364" fill="#0b0b0b" font-size="14" text-anchor="start" font-weight="bold">flags without hops, length</text>
+<text x="52" y="382" fill="#52514e" font-size="13" text-anchor="start" font-weight="normal">21 bytes</text>
+<rect x="400" y="260" width="220" height="84" rx="6" fill="#d9f0e6" stroke="#1baf7a" stroke-width="1.5"/>
+<text x="412" y="286" fill="#0b0b0b" font-size="14" text-anchor="start" font-weight="bold">1  mix (XOR)</text>
+<text x="412" y="306" fill="#52514e" font-size="13" text-anchor="start" font-weight="normal">key of this packet:</text>
+<text x="412" y="324" fill="#52514e" font-size="13" text-anchor="start" font-weight="normal">used once</text>
+<line x1="340" y1="250" x2="400" y2="288" stroke="#0b0b0b" stroke-width="2" marker-end="url(#a)"/>
+<line x1="340" y1="356" x2="400" y2="318" stroke="#0b0b0b" stroke-width="2" marker-end="url(#a)"/>
+<rect x="680" y="260" width="240" height="84" rx="6" fill="#d9f0e6" stroke="#1baf7a" stroke-width="1.5"/>
+<text x="692" y="286" fill="#0b0b0b" font-size="14" text-anchor="start" font-weight="bold">2  Salsa20/12</text>
+<text x="692" y="306" fill="#52514e" font-size="13" text-anchor="start" font-weight="normal">key of this packet,</text>
+<text x="692" y="324" fill="#52514e" font-size="13" text-anchor="start" font-weight="normal">nonce = packet ID</text>
+<line x1="620" y1="302" x2="680" y2="302" stroke="#0b0b0b" stroke-width="2" marker-end="url(#a)"/>
+<rect x="980" y="210" width="260" height="74" rx="6" fill="#fbe3d8" stroke="#eb6834" stroke-width="1.5"/>
+<text x="992" y="234" fill="#0b0b0b" font-size="14" text-anchor="start" font-weight="bold">key stream block 0</text>
+<text x="992" y="254" fill="#52514e" font-size="13" text-anchor="start" font-weight="normal">first 32 bytes: the one-time</text>
+<text x="992" y="272" fill="#52514e" font-size="13" text-anchor="start" font-weight="normal">Poly1305 key (r, s)</text>
+<rect x="980" y="320" width="260" height="74" rx="6" fill="#dce9fa" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="992" y="344" fill="#0b0b0b" font-size="14" text-anchor="start" font-weight="bold">key stream blocks 1, 2, ...</text>
+<text x="992" y="364" fill="#52514e" font-size="13" text-anchor="start" font-weight="normal">XOR with verb and payload</text>
+<text x="992" y="382" fill="#52514e" font-size="13" text-anchor="start" font-weight="normal">(64 bytes for each block)</text>
+<line x1="920" y1="288" x2="980" y2="250" stroke="#0b0b0b" stroke-width="2" marker-end="url(#a)"/>
+<line x1="920" y1="318" x2="980" y2="356" stroke="#0b0b0b" stroke-width="2" marker-end="url(#a)"/>
+<rect x="980" y="430" width="260" height="84" rx="6" fill="#d9f0e6" stroke="#1baf7a" stroke-width="1.5"/>
+<text x="992" y="456" fill="#0b0b0b" font-size="14" text-anchor="start" font-weight="bold">3  Poly1305</text>
+<text x="992" y="476" fill="#52514e" font-size="13" text-anchor="start" font-weight="normal">tag of the encrypted bytes,</text>
+<text x="992" y="494" fill="#52514e" font-size="13" text-anchor="start" font-weight="normal">16 bytes; the packet carries 8</text>
+<path d="M 1260 247 C 1300 247, 1300 472, 1244 472" stroke="#0b0b0b" stroke-width="2" fill="none" marker-end="url(#a)"/><line x1="1110" y1="394" x2="1110" y2="430" stroke="#0b0b0b" stroke-width="2" marker-end="url(#a)"/>
+<rect x="40" y="430" width="880" height="84" rx="6" fill="#fcfcfb" stroke="#52514e" stroke-width="1.5"/>
+<text x="52" y="456" fill="#0b0b0b" font-size="14" text-anchor="start" font-weight="normal">Seal (sender): steps 1, 2, encrypt, then 3, write the 8 MAC bytes into the header.</text>
+<text x="52" y="478" fill="#0b0b0b" font-size="14" text-anchor="start" font-weight="normal">Open (receiver): steps 1, 2, then 3 over the bytes as received; compare the 8 bytes in constant time;</text>
+<text x="52" y="500" fill="#0b0b0b" font-size="14" text-anchor="start" font-weight="normal">only if they are equal, decrypt. If not, the packet stays as it was and is dropped.</text>
+</svg>
