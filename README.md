@@ -55,10 +55,10 @@ Limits by design:
 
 ## Improvements already applied compared to reference
 
-Compared to the reference code, there is many small improvements that came from the iterative testing, proofing and contract writing; in other words, the code that was inspired by the reference code, had to get substantially improved to pass the well-intended formal proof goals.
+Compared to the reference code, there are many small improvements that came from the iterative testing, proofing and contract writing; in other words, the code that was inspired by the reference code, had to get substantially improved to pass the well-intended formal proof goals.
 A list of such changes is maintained in [dev-docs](dev-docs/improvements-applied.md)
 
-Note that None of these are changing the protocol; the implementation merely became much more strict.
+Note that none of these change the protocol; the implementation merely became much more strict.
 
 It is unclear if any of these could be used to exploit the original client; research pending.
 
