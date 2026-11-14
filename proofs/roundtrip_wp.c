@@ -173,9 +173,6 @@ size_t ztl_t4_split_frag_first(uint8_t *pkt, size_t len, int enc, uint8_t *first
 	return r;
 }
 
-/* The cipher suite of a sent packet, read from its flags byte without bit arithmetic. */
-#define T4_ENC(f) (((f) == 0x08u || (f) == 0x48u) ? 1 : 0)
-
 /* T4 for every packet that ztl_poll() sends (all fit in one datagram). */
 /*@ requires \valid(l) && ztl_leaf_ok(l) && l->node.self[0] != ZTL_FRAG_INDICATOR;
   @ requires \valid(tx + (0 .. ZTL_PKT_MAX - 1)) && \valid(peer) && \valid(out);
@@ -191,7 +188,8 @@ size_t ztl_t4_poll(struct ztl_leaf *l, uint32_t now_ms, uint8_t *tx, unsigned in
 	const size_t n = ztl_poll(l, now_ms, tx, peer);
 
 	if (n != 0u) {
-		(void)ztl_t4_head(tx, n, T4_ENC(tx[ZTL_PKT_IDX_FLAGS]), out);
+		/* A periodic packet fits one datagram: flags 0x00 or 0x08, so this is its cipher suite. */
+		(void)ztl_t4_head(tx, n, (int)(tx[ZTL_PKT_IDX_FLAGS] / 8u), out);
 	}
 	return n;
 }
@@ -215,7 +213,7 @@ size_t ztl_t4_frame(struct ztl_leaf *l, unsigned int i, const uint8_t *dst, uint
 	const size_t n = ztl_frame_to(l, i, dst, ethertype, data, len, tx);
 
 	if (n != 0u) {
-		(void)ztl_t4_head(tx, n, T4_ENC(tx[ZTL_PKT_IDX_FLAGS]), out);
+		(void)ztl_t4_head(tx, n, 1, out); /* a frame is always encrypted */
 	}
 	return n;
 }
