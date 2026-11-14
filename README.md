@@ -10,15 +10,15 @@ So that its stated properties can be machine-checked and proven in a theorem pro
 
 Every function that touches network input has a written contract, and tools (Frama-C WP, CBMC, Frama-C Eva, Wolfram Mathematica) check the code against it.
 
-⏭ Work in progress. Currently It runs on a Teensy 4.1 under Zephyr as a member of a private network with a stock controller and stock 1.16.2 peers (ping, Telnet and SSH over the overlay); As of 2026-11-14, the proofs are incomplete, but there seem to be no obstacles to complete the proofs. see [checklist](CHECKLIST.md)
+⏭ Status: operational. Currently It runs on a Teensy 4.1 under Zephyr, as a member of a full scale ZeroTier network, with stock controller and stock peers. Ping, Telnet and SSH works well. As of 2026-11-14, the proofs are incomplete, but there seem to be no obstacles to complete the proofs. see [checklist](CHECKLIST.md)
 
 # Why
 
-My concept is that instead of fixing and patching old software, and working through theories and models of C, which are often undecideable, 
+My concept is that instead of fixing and patching old software, and working through theories and models of C, which are often undecidable, 
 
 We should re-implement it in such a way that they can be checked, and reasoned about.
 
-In the same way in which AI revolution was enabled by reimplementation of restricted (differentiable) function set over real numbers,
+In the same way in which AI revolution was enabled by re-implementation of restricted (differentiable) function set over real numbers,
 
 We have a restricted set over integers that can be used to implement, maybe not every functionality thinkable, but enough of it to be useful in practice and hold the properties that make it provably correct.
 
@@ -26,7 +26,7 @@ We have a restricted set over integers that can be used to implement, maybe not 
 ## Design in one paragraph
 
 Since I am just one researcher working out of my private funds in spare time,
-the design is purposfully limited to be tractible.
+the design is purposefully limited to be tractable.
 
 The design constraints below make it a "restricted zerotier leaf node" in other words, a node that is fully compatible with zerotier network, but has limited capabilities.
 
@@ -50,12 +50,17 @@ Limits by design:
 * it takes a network configuration only directly from the pinned controller, without checking the controller's signature, and only when the configuration fits one chunk; 
 * it does not relay, bridge or discover peers; 
 * it has no protection against replayed packets (a stated limit, as in the reference; possible mitigations: [NOT_PROVEN.md](reports/NOT_PROVEN.md), N-7); 
-* the network's MTU must be 1280 to 1500 (set it on the controller: the stock default is 2800).
+* the network's MTU must be 1280 to 1500 (set it on the controller: the stock default is 2800); (it is known that it can well be increased but there are performance and RAM use implications on both sides of the network)
 
 
 ## What IS proven
 
-Proved by machine for every input, not shown by tests: Frama-C WP with three automatic provers checks each function of the leaf against a written contract, at the full packet size of 2,048 bytes, in a 64-bit and a 32-bit data model (3,977 and 3,982 proof goals, all proved). CBMC checks the datagram classifier a second time, with a different method. The complete list, statement by statement: [List of proofs](reports/PROOFS.md#list-of-proofs).
+Proved by machine for every input, not shown by tests: 
+* Frama-C WP with three automatic provers checks each function of the leaf against a written contract, at the full packet size of 2,048 bytes, in a 64-bit and a 32-bit data model (3,977 and 3,982 proof goals, all proved).
+* CBMC checks the datagram classifier a second time, with a different method.
+
+ 
+ The complete list, statement by statement: [List of proofs](reports/PROOFS.md#list-of-proofs).
 
 * **For every function of the leaf** (all nine source files): 
   * no run-time error; 
@@ -76,6 +81,13 @@ The proofs notice wrong code: 102 deliberate errors were put into the sources, o
 
 Approximate cost of running the proofs: one full default run (`proofs/on-remote.sh start`, which runs `proofs/run.sh`) takes about 32 minutes on a 32-core Linux host, with a memory peak of 5 GB; nearly all of it is WP in the two data models and the smoke step. The whole list of deliberate errors (`mutate`) takes about 2 hours more.
 
+## What is still coming
+
+* Verifast annotations
+* MISRA C compliance
+* C-Rusted compliance
+
+
 ## NOT proven, but still tested
 
 Shown only by tests against the reference implementation: 
@@ -86,7 +98,7 @@ Shown only by reading the compiled code:
 * constant time of the MAC comparison. 
 
 Not there at all: 
-* protection against replayed packets. 
+* protection against replayed packets. This is a RAM-performance design decision.
 
 "Proved" means that the code meets its written contract in the tools' model of C; the contracts are written by hand, and the compiler is trusted. 
 
