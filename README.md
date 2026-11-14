@@ -55,7 +55,7 @@ Limits by design:
 
 ## What IS proven
 
-Proved by machine for every input, not shown by tests: Frama-C WP with three automatic provers checks each function of the leaf against a written contract, at the full packet size of 2,048 bytes, in a 64-bit and a 32-bit data model (3,971 and 3,976 proof goals, all proved). CBMC checks the datagram classifier a second time, with a different method. The complete list, statement by statement: [List of proofs](reports/PROOFS.md#list-of-proofs).
+Proved by machine for every input, not shown by tests: Frama-C WP with three automatic provers checks each function of the leaf against a written contract, at the full packet size of 2,048 bytes, in a 64-bit and a 32-bit data model (3,977 and 3,982 proof goals, all proved). CBMC checks the datagram classifier a second time, with a different method. The complete list, statement by statement: [List of proofs](reports/PROOFS.md#list-of-proofs).
 
 * **For every function of the leaf** (all nine source files): 
   * no run-time error; 

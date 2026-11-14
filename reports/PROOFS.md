@@ -39,7 +39,7 @@ A "contract" states what must be true before the call (the buffer is readable fo
 
 ## List of proofs
 
-Every statement below is proved by a tool for every input that its contract allows, at the full packet size of 2,048 bytes unless a size is named. "WP" is Frama-C WP with the provers Alt-Ergo, Z3 and CVC5, in a 64-bit and a 32-bit data model, with the checks for run-time errors, unsigned wrap and lossy conversion switched on: 3,971 goals in the 64-bit model and 3,976 in the 32-bit model, all proved. Each part names the chapter of this report with the details and the limits: [classifier](#attempts-on-the-classifier), [reassembly](#attempts-on-reassembly), [receive gate](#attempts-on-the-receive-gate), [cryptography](#attempts-on-the-cryptography), [protocol layer](#attempts-on-the-protocol-layer). What is NOT proved is in the chapter [What all of this does not show](#what-all-of-this-does-not-show).
+Every statement below is proved by a tool for every input that its contract allows, at the full packet size of 2,048 bytes unless a size is named. "WP" is Frama-C WP with the provers Alt-Ergo, Z3 and CVC5, in a 64-bit and a 32-bit data model, with the checks for run-time errors, unsigned wrap and lossy conversion switched on: 3,977 goals in the 64-bit model and 3,982 in the 32-bit model, all proved. Each part names the chapter of this report with the details and the limits: [classifier](#attempts-on-the-classifier), [reassembly](#attempts-on-reassembly), [receive gate](#attempts-on-the-receive-gate), [cryptography](#attempts-on-the-cryptography), [protocol layer](#attempts-on-the-protocol-layer). What is NOT proved is in the chapter [What all of this does not show](#what-all-of-this-does-not-show).
 
 ```yaml
 - part: "Every function in src/ (nine source files, the whole leaf)"
@@ -144,7 +144,7 @@ Every statement below is proved by a tool for every input that its contract allo
       statement: >-
         Poly1305: the five limbs stay inside their limits for a message of any length up to the packet size (2,048 bytes), so no
         product, sum or carry leaves its type
-      tool: "WP 572 goals; CBMC induction step, 1,720 checks"
+      tool: "WP 578 goals; CBMC induction step, 1,720 checks"
     - id: L-19
       statement: >-
         Poly1305, each step as a statement about numbers: bytes to limbs; add a block; multiply
@@ -220,7 +220,7 @@ Each proof holds under these assumptions: the caller meets the stated preconditi
     outside the buffer, write outside the record, overflow an integer, shift by an illegal amount,
     or convert a value with loss? The buffer is allocated with exactly `len` bytes, so one byte too
     far is an error.
-  tool: "CBMC 5.95.1"
+  tool: "CBMC 6.6.0"
   result: >-
     ✅ 490 automatic checks, 0 failed (pointer dereferences, pointer calculations, overflows, shifts,
     allocation). With the 16 assertions of A-2 the tool reports 506 in total.
@@ -270,7 +270,7 @@ Each proof holds under these assumptions: the caller meets the stated preconditi
     it is computed as plain arithmetic), nothing written on a drop, the three rules cover every
     input and never overlap, no run-time error, and no unsigned sum or product that wraps (D-2
     explains this stricter setting).
-  tool: "Frama-C 33.0 WP with Alt-Ergo 2.6.4, CVC5 1.1.2, Z3 4.8.12"
+  tool: "Frama-C 33.0 WP with Alt-Ergo 2.6.4, CVC5 1.3.2, Z3 4.13.3"
   result: "✅ 165 of 165 goals proved."
   does_not_show: >-
     Pointer alignment: WP skips this check, so the proof assumes that the caller passes a correctly
@@ -469,7 +469,7 @@ The code is written in an unusual style, for the provers. There is no intended w
   tool: >-
     Frama-C WP, both data models, `-warn-unsigned-overflow -warn-unsigned-downcast` on all units
   result: >-
-    ✅ 281 + 572 + 248 goals for the three files (32-bit model: 280 + 572 + 248; all units together:
+    ✅ 281 + 578 + 248 goals for the three files (32-bit model: 280 + 578 + 248; all units together:
     see the list of proofs).
   does_not_show: >-
     When open answers 1 (see C-1). Timing. That each exit path wipes its secrets: WP proves that the
@@ -482,7 +482,7 @@ The code is written in an unusual style, for the provers. There is no intended w
   tool: >-
     WP (part of D-2); CBMC as an independent induction step from ANY limb values inside the limits
     (`-DH_POLY_STEP`)
-  result: "✅ WP proved; CBMC 0 of 1,720 checks failed (CBMC 5.95.1; step `cbmcpoly` of the runner)."
+  result: "✅ WP proved; CBMC 0 of 1,720 checks failed (CBMC 6.6.0; step `cbmcpoly` of the runner)."
   does_not_show: "—"
 - id: D-4
   asked: >-
@@ -492,7 +492,7 @@ The code is written in an unusual style, for the provers. There is no intended w
     the product at 2^130 and above plus the last carry; (d) the last step gives tag bytes that stand
     for `((h mod 2^130 − 5) mod 2^128 + pad) mod 2^128`; a lemma, proved for all numbers, says that
     this is `(h mod 2^130 − 5 + pad) mod 2^128`, the form in the definition.
-  tool: "WP (part of the 572 goals of `src/poly.c`)"
+  tool: "WP (part of the 578 goals of `src/poly.c`)"
   result: "✅ proved, every length and content."
   does_not_show: >-
     The whole function. No contract says that the loop feeds every block exactly once, that r is

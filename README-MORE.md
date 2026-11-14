@@ -111,6 +111,7 @@ Time inside the leaf on the board (i.MX RT1062 at 600 MHz, code in flash, counte
 - [reports/PERFORMANCE.md](reports/PERFORMANCE.md): cycles for each packet, cost against the reference solution, round trip against size, a one-hour run.
 - [reports/PROOFS.md](reports/PROOFS.md): every proof and check, explained for a reader who is not a specialist; limits; failed attempts.
 - [reports/PROTOCOL.md](reports/PROTOCOL.md): what a stock ZeroTier peer and controller expect from this leaf (messages, timings, configuration, membership), read from the reference source.
+- [reports/future-work.md](reports/future-work.md): items that were looked at, costed or measured, and not done.
 - [dev-docs/](dev-docs/README.md): working documents: open points, costed options, measurements, the review procedure, and every contract tightening with the wrong program it would have accepted before.
 - [CHECKLIST.md](CHECKLIST.md): target theorems, design levers, the list of provers to try and their status, further proof targets, the proof method learned so far.
 
@@ -123,7 +124,20 @@ proofs/on-remote.sh wait           # wait for the end, copy results back; exit s
 proofs/on-remote.sh status | stop | fetch
 ```
 
-No prover runs on the workstation. `proofs/on-remote.sh` copies the sources to another host (the ssh target `ZTL_REMOTE` in the local file `.env`, which is not in Git: copy `.env.example`; there is no default) and runs `proofs/run.sh` there as one systemd unit with a memory limit (`ZTL_MEM`, default 20G) and a time limit; `proofs/run.sh` refuses to start otherwise. The host needs `cbmc`, `z3`, `cvc5` (Ubuntu packages), Frama-C with WP and Alt-Ergo in the opam switch `ztl` (`proofs/opam-setup.sh start`, needs apt `graphviz` and `libgmp-dev`), and the Zephyr SDK ARM compiler in `~/ztl-sdk/arm-zephyr-eabi`. Results come back as `proofs/out-<step>.txt`.
+No prover runs on the workstation. `proofs/on-remote.sh` copies the sources to another host (the ssh target `ZTL_REMOTE` in the local file `.env`, which is not in Git: copy `.env.example`; there is no default) and runs `proofs/run.sh` there as one systemd unit with a memory limit (`ZTL_MEM`, default 20G) and a time limit; `proofs/run.sh` refuses to start otherwise. The host needs the tools below, first in `PATH`: Frama-C with WP and Alt-Ergo in the opam switch `ztl` (`proofs/opam-setup.sh start`, needs apt `graphviz` and `libgmp-dev`), and the Zephyr SDK ARM compiler in `~/ztl-sdk/arm-zephyr-eabi`. Results come back as `proofs/out-<step>.txt`.
+
+Pinned tool versions (all prover hosts run the same set; results with other versions are not the published results):
+
+```yaml
+cbmc: "6.6.0 (Ubuntu 26.04 package; on Ubuntu 24.04 built from the tag cbmc-6.6.0 with the MiniSat of Ubuntu)"
+z3: "4.13.3 (opam package z3.4.13.3, in the switch ztl)"
+cvc5: "1.3.2 (Ubuntu 26.04 package; on Ubuntu 24.04 the same binary and libraries, copied)"
+frama-c: "33.0 (opam switch ztl)"
+alt-ergo: "2.6.4 (opam switch ztl)"
+why3: "1.8.2 (opam switch ztl)"
+ocaml: "4.14.2 (opam switch ztl)"
+arm-compiler: "arm-zephyr-eabi-gcc of Zephyr SDK 1.0.1"
+```
 
 The CBMC harnesses for reassembly, for the receive gate and for the cryptography are large; they run one per unit through `proofs/remote.sh start|status|stop|fetch` (ssh target `ZTL_REMOTE_BIG` in `.env`, a host with much memory), at reduced packet size (see `reports/PROOFS.md`).
 

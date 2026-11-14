@@ -218,7 +218,7 @@ Order = recommended order of trial. "Have" = installed on this host on 2026-11-1
 
 ```yaml
 - id: P-1
-  tool: "CBMC 5.95.1"
+  tool: "CBMC 6.6.0"
   class: "Bounded model checking"
   can_prove_here: >-
     T1 for all inputs up to the bound; assertions; fits the fixed peer count and 2048 B cap
@@ -240,13 +240,13 @@ Order = recommended order of trial. "Have" = installed on this host on 2026-11-1
     ♻️ `proofs/wire_eva.c` (Frama-C 33.0): 0 run-time-error alarms, preconditions valid; cannot
     decide the contract behaviours on unknown bytes (left to P-1, P-3)
 - id: P-3
-  tool: "Frama-C WP + ACSL, provers Z3 4.8.12, CVC5 1.1.2 through Why3 1.6.0"
+  tool: "Frama-C WP + ACSL, provers Z3 4.13.3, CVC5 1.3.2 through Why3 1.8.2"
   class: "Deductive"
   can_prove_here: "Function contracts: T4, table invariants, parts of T3 with crypto as axioms"
   have: "✅ through P-4 (Ubuntu `frama-c-base` has no WP plug-in)"
   status: >-
-    ♻️ 10 units (the nine source files and the two arrival orders of reassembly), 3,971 goals
-    (32-bit model 3,976), all proved at the full packet size, with unsigned overflow and downcast
+    ♻️ 10 units (the nine source files and the two arrival orders of reassembly), 3,977 goals
+    (32-bit model 3,982), all proved at the full packet size, with unsigned overflow and downcast
     checks on: exact classifier contract with the packet-id value; reassembly with the whole slot
     rule; the gate; the cryptography (memory safety, no wrap, the gate's contract of the primitive,
     Poly1305 step arithmetic); the LZ4 decoder and the dictionary reader (memory safety); the whole
