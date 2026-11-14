@@ -53,6 +53,15 @@ Limits by design:
 * the network's MTU must be 1280 to 1500 (set it on the controller: the stock default is 2800); (it is known that it can well be increased but there are performance and RAM use implications on both sides of the network)
 
 
+## Improvements already applied compared to reference
+
+Compared to the reference code, there is many small improvements that came from the iterative testing, proofing and contract writing; in other words, the code that was inspired by the reference code, had to get substantially improved to pass the well-intended formal proof goals.
+A list of such changes is maintained in [dev-docs](dev-docs/improvements-applied.md)
+
+Note that None of these are changing the protocol; the implementation merely became much more strict.
+
+It is unclear if any of these could be used to exploit the original client; research pending.
+
 ## What IS proven
 
 Proved by machine for every input, not shown by tests:
@@ -88,14 +97,6 @@ Approximate cost of running the proofs: one full default run (`proofs/on-remote.
 * MISRA C compliance
 * C-Rusted compliance
 
-## Improvements already applied compared to reference
-
-Compared to the reference code, there is many small improvements that came from the iterative testing, proofing and contract writing; in other words, the code that was inspired by the reference code, had to get substantially improved to pass the well-intended formal proof goals.
-A list of such changes is maintained in [dev-docs](dev-docs/improvements-applied.md)
-
-Note that None of these are changing the protocol; the implementation merely became much more strict.
-
-It is unclear if any of these could be used to exploit the original client; research pending.
 
 ## NOT proven, but still tested
 
@@ -117,4 +118,4 @@ All limits, and the attempts that failed: [What all of this does not show](repor
 [More details](README-MORE.md)
 
 
-Licence: none granted. This is private intellectual property, published for reading only: all rights reserved, reproduction prohibited. See [LICENSE](LICENSE).
+Licence: none granted. This is private intellectual property, published for commercial contract evaluation purposes only; all rights reserved, reproduction prohibited. See [LICENSE](LICENSE).
