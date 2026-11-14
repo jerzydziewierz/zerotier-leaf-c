@@ -244,4 +244,6 @@ MUT
 	[ $s -ne 0 ] && rc=1
 	echo "== $t $([ $s -eq 0 ] && echo PASS || echo FAIL): $(grep -E 'VERIFICATION|failed|covered|Proved goals|alarms? generated|unknown +[0-9]+ invalid|Timeout|Failed|bytes:|rejected|SURVIVED|NOT APPLIED|BROKEN|rror|ERROR: AddressSanitizer' $o | tr -s ' ' | tr '\n' ';')"
 done
+# The last line says that the run came to its end: a run that was stopped has none.
+echo "== end: $([ $rc -eq 0 ] && echo all steps passed || echo FAILED)"
 exit $rc

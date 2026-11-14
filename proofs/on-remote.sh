@@ -54,6 +54,7 @@ wait)
 		case "$st" in active|activating|deactivating) sleep 15 ;; *) break ;; esac
 	done
 	rsync -a "$H:$D/proofs/out-*" "$L/"; cut -c1-220 "$L/out-run.txt"
-	[ "$(r "systemctl show $U -p Result --value")" = success ] ;;
+	# A stopped run also has the result "success": the run must have written its last line.
+	[ "$(r "systemctl show $U -p Result --value")" = success ] && grep -q "^== end: all steps passed" "$L/out-run.txt" ;;
 *) sed -n '2,14p' "$0"; exit 2 ;;
 esac
