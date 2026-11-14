@@ -65,7 +65,7 @@ It is unclear if any of these could be used to exploit the original client; rese
 ## What IS proven
 
 Proved by machine for every input, not shown by tests:
-* Frama-C WP with three automatic provers checks each function of the leaf against a written contract, at the full packet size of 2,048 bytes, in a 64-bit and a 32-bit data model (3,977 and 3,982 proof goals, all proved).
+* Frama-C WP with three automatic provers checks each function of the leaf against a written contract, at the full packet size of 2,048 bytes, in a 64-bit and a 32-bit data model (4,296 and 4,301 proof goals, all proved).
 * CBMC checks the datagram classifier a second time, with a different method.
 
 
@@ -87,7 +87,7 @@ Proved by machine for every input, not shown by tests:
 * **Parse after build** (theorem T4, for what the leaf both builds and parses): every packet that the leaf sends carries the packet ID, destination and source it took, and the leaf's own receive path reads them back unchanged; a packet in two datagrams is reassembled byte for byte, in either order of arrival. ([details](reports/PROOFS.md#list-of-proofs))
 * **LZ4 decoder and configuration reader**: no access outside their buffers for any input up to the packet size, however malformed.
 
-The proofs notice wrong code: 102 deliberate errors were put into the sources, one at a time, and each was rejected by the tool that should see it.
+The proofs notice wrong code: 104 deliberate errors were put into the sources, one at a time, and each was rejected by the tool that should see it.
 
 Approximate cost of running the proofs: one full default run (`proofs/on-remote.sh start`, which runs `proofs/run.sh`) takes about 32 minutes on a 32-core Linux host, with a memory peak of 5 GB; nearly all of it is WP in the two data models and the smoke step. The whole list of deliberate errors (`mutate`) takes about 2 hours more.
 

@@ -82,7 +82,7 @@ Paths such as `../grey_zerotier/` and `../dl/sdk/` in scripts and documents poin
     stock peers; ping, Telnet and SSH sessions); no proof, no test of its own; calls into the network stack are made without the leaf's lock
 ```
 
-Deliberate errors (mutation step): 102 errors in 114 tool runs, every one rejected by the tool that should see it. Measured in a firmware build for the Cortex-M7 (Zephyr's compiler options; the runner's own build of the nine files gives 7,688): code of the leaf 7,694 bytes, Zephyr adapter 2,364 bytes; RAM of the leaf 7,136 bytes (`struct ztl_leaf`), of the whole Zephyr module 15.8 KB with its thread stack and three packet buffers.
+Deliberate errors (mutation step): 104 errors in 118 tool runs, every one rejected by the tool that should see it. Measured in a firmware build for the Cortex-M7 (Zephyr's compiler options; built before the header change of T4, when the runner's own build of the nine files gave 7,688; it gives 7,808 now): code of the leaf 7,694 bytes, Zephyr adapter 2,364 bytes; RAM of the leaf 7,136 bytes (`struct ztl_leaf`), of the whole Zephyr module 15.8 KB with its thread stack and three packet buffers.
 
 Size against the reference solution, measured in one application (Teensy 4.1, Zephyr 4.4.2, `-Os`; the same application built without ZeroTier, with this leaf, and with the reference module; 2026-11-14). "Added" is the difference to the build without ZeroTier; RAM is initialised data plus zeroed memory.
 

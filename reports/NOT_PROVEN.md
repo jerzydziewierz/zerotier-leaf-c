@@ -95,7 +95,7 @@ Proved: nothing.
 ## 12. The method itself
 
 - [ ] **N-31 ⚠️ The rules are a reading of the reference.** A proof shows that the code follows the written rule, not that the rule is right. Three rule errors were found by review and by reading, none by a tool (F-7, F-8, F-10).
-- [ ] **N-32 The contracts are written by hand.** A contract that says too little proves less than it seems. Stands in: 102 deliberate errors, each rejected; 1,000 smoke tests found no contradiction; three review rounds. These are samples, not proofs.
+- [ ] **N-32 The contracts are written by hand.** A contract that says too little proves less than it seems. Stands in: 104 deliberate errors, each rejected; 1,065 smoke tests found no contradiction; three review rounds. These are samples, not proofs.
 - [ ] **N-33 The tools' model of C.** No notion of reading memory that was never written (one such read was found by review, F-24); pointer alignment is not checked; the 32-bit model is x86, not ARM, for the layout of structures.
 - [ ] **N-34 The compiled code.** The proofs are about the C source. The compiler, the linker and the processor are trusted. Stands in: the target build without warnings, and reading the compiled code where secrets are handled.
 - [ ] **N-35 Stack depth.** Per function from the compiler, summed by hand along the call graph; interrupts are not included. No tool bounds it.

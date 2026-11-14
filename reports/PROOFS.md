@@ -4,7 +4,7 @@ State: 2026-11-13, after two rounds of independent review of the receive path an
 
 ## What is under test
 
-Nine source files. Six are the receive path up to an authenticated and decrypted packet: the classifier `ztl_classify()` (`src/wire.c`), the reassembly `ztl_reasm_input()` (`src/reasm.c`), the receive gate `ztl_rx()` (`src/rx.c`), and behind the gate the cryptography: Salsa20/12 (`src/salsa.c`), Poly1305 (`src/poly.c`) and their composition `ztl_auth_open()` / `ztl_auth_seal()` (`src/auth.c`). Together 3,076 bytes of code on the Cortex-M7 at `-Os`, 4,440 bytes of RAM (`struct ztl_node`), at most 456 bytes of stack on the receive path, no call into a C library. Three more are the protocol layer on top of that gate: the LZ4 decoder (`src/lz4.c`), the dictionary reader (`src/dict.c`) and the messages and timers (`src/leaf.c`); 4,612 bytes of code more, 7,136 bytes of RAM for the whole leaf (`struct ztl_leaf`). The sections below take them one at a time.
+Nine source files. Six are the receive path up to an authenticated and decrypted packet: the classifier `ztl_classify()` (`src/wire.c`), the reassembly `ztl_reasm_input()` (`src/reasm.c`), the receive gate `ztl_rx()` (`src/rx.c`), and behind the gate the cryptography: Salsa20/12 (`src/salsa.c`), Poly1305 (`src/poly.c`) and their composition `ztl_auth_open()` / `ztl_auth_seal()` (`src/auth.c`). Together 3,076 bytes of code on the Cortex-M7 at `-Os`, 4,440 bytes of RAM (`struct ztl_node`), at most 456 bytes of stack on the receive path, no call into a C library. Three more are the protocol layer on top of that gate: the LZ4 decoder (`src/lz4.c`), the dictionary reader (`src/dict.c`) and the messages and timers (`src/leaf.c`); 4,732 bytes of code more, 7,136 bytes of RAM for the whole leaf (`struct ztl_leaf`). The sections below take them one at a time.
 
 The classifier (196 bytes of code, 32 bytes of stack) receives the payload of one UDP datagram from the network, a pointer and a length, and decides one of three things:
 
@@ -39,7 +39,7 @@ A "contract" states what must be true before the call (the buffer is readable fo
 
 ## List of proofs
 
-Every statement below is proved by a tool for every input that its contract allows, at the full packet size of 2,048 bytes unless a size is named. "WP" is Frama-C WP with the provers Alt-Ergo, Z3 and CVC5, in a 64-bit and a 32-bit data model, with the checks for run-time errors, unsigned wrap and lossy conversion switched on: 3,977 goals in the 64-bit model and 3,982 in the 32-bit model, all proved. Each part names the chapter of this report with the details and the limits: [classifier](#attempts-on-the-classifier), [reassembly](#attempts-on-reassembly), [receive gate](#attempts-on-the-receive-gate), [cryptography](#attempts-on-the-cryptography), [protocol layer](#attempts-on-the-protocol-layer). What is NOT proved is in the chapter [What all of this does not show](#what-all-of-this-does-not-show).
+Every statement below is proved by a tool for every input that its contract allows, at the full packet size of 2,048 bytes unless a size is named. "WP" is Frama-C WP with the provers Alt-Ergo, Z3 and CVC5, in a 64-bit and a 32-bit data model, with the checks for run-time errors, unsigned wrap and lossy conversion switched on: 4,296 goals in the 64-bit model and 4,301 in the 32-bit model, all proved. Each part names the chapter of this report with the details and the limits: [classifier](#attempts-on-the-classifier), [reassembly](#attempts-on-reassembly), [receive gate](#attempts-on-the-receive-gate), [cryptography](#attempts-on-the-cryptography), [protocol layer](#attempts-on-the-protocol-layer). What is NOT proved is in the chapter [What all of this does not show](#what-all-of-this-does-not-show).
 
 ```yaml
 - part: "Every function in src/ (nine source files, the whole leaf)"
@@ -167,13 +167,13 @@ Every statement below is proved by a tool for every input that its contract allo
       statement: >-
         Dictionary reader: for every dictionary up to 2,048 bytes and every key up to 8 bytes, no access outside the dictionary, the key
         or the value buffer
-      tool: "WP 267 goals"
+      tool: "WP 269 goals"
     - id: L-23
       statement: >-
         Authentication before effects for the whole leaf: ztl_input() gives a reply packet or a
         frame only after the receive gate made exactly one call of the authentication primitive and
         it answered yes
-      tool: "WP (part of the 1,779 goals of src/leaf.c)"
+      tool: "WP (part of the 1,801 goals of src/leaf.c)"
     - id: L-24
       statement: >-
         After the start (ztl_init(), ztl_pin()) no call writes the node's own address, the table of
@@ -222,7 +222,7 @@ Every statement below is proved by a tool for every input that its contract allo
         The first datagram of every such packet is read back by ztl_classify() as a head with the
         same packet ID, destination, source, cipher suite and "fragmented" flag (needs an own address
         that does not start with the reserved byte 0xff: a precondition of ztl_init())
-      tool: "WP"
+      tool: "WP (proofs/roundtrip_wp.c, 295 goals)"
     - id: L-32
       statement: >-
         A packet of 1,433 to 2,048 bytes with such a header, sent in two datagrams as the adapter
@@ -232,7 +232,7 @@ Every statement below is proved by a tool for every input that its contract allo
       tool: "WP"
 ```
 
-Each proof holds under these assumptions: the caller meets the stated preconditions (valid, separate buffers); the tools' model of C (no notion of reading memory that was never written; pointer alignment not checked); the compiler and the hardware are correct. The contracts are written by hand: 102 deliberate errors in the code (114 tool runs), each rejected by the tool named for it, are the guard against contracts that say too little (A-6, B-6, C-4, D-9, E-7).
+Each proof holds under these assumptions: the caller meets the stated preconditions (valid, separate buffers); the tools' model of C (no notion of reading memory that was never written; pointer alignment not checked); the compiler and the hardware are correct. The contracts are written by hand: 104 deliberate errors in the code (118 tool runs), each rejected by the tool named for it, are the guard against contracts that say too little (A-6, B-6, C-4, D-9, E-7).
 
 ## Attempts on the classifier
 
@@ -614,7 +614,7 @@ Errors that pass every check here, found by thinking and by review, not by a too
 
 ## Attempts on the protocol layer
 
-`src/leaf.c` (4,106 bytes of code) is everything between the gate and the host: it answers HELLO and ECHO, sends its own HELLO, asks the controller for the network configuration and reads the answer, pushes its certificate of membership, announces its multicast groups, and turns frames into packets and back. It reads only packets that passed the gate, so every input here comes from a pinned peer with a right MAC; the checks below treat such a peer as possibly faulty or hostile all the same. `src/lz4.c` (196 bytes) decodes compressed packets; `src/dict.c` (310 bytes) reads the configuration format. The layer does no input or output: it fills one packet buffer that the caller sends.
+`src/leaf.c` (4,226 bytes of code) is everything between the gate and the host: it answers HELLO and ECHO, sends its own HELLO, asks the controller for the network configuration and reads the answer, pushes its certificate of membership, announces its multicast groups, and turns frames into packets and back. It reads only packets that passed the gate, so every input here comes from a pinned peer with a right MAC; the checks below treat such a peer as possibly faulty or hostile all the same. `src/lz4.c` (196 bytes) decodes compressed packets; `src/dict.c` (310 bytes) reads the configuration format. The layer does no input or output: it fills one packet buffer that the caller sends.
 
 The layer was written and tested first (E-5, E-6), then given contracts (E-9). For the proofs the code changed in three ways, with the same behaviour: state flags became separate 0-or-1 bytes in place of bits of one byte; dictionary keys became byte arrays (no pointer casts); the receive gate's contract now says where the delivered packet lies.
 
@@ -649,7 +649,7 @@ The layer was written and tested first (E-5, E-6), then given contracts (E-9). F
     Dictionary reader: any read outside the dictionary or the key, any write outside the value
     buffer, any loop that does not end, for every dictionary up to 2,048 bytes?
   tool: "Frama-C WP, both data models"
-  result: "✅ 267 of 267 goals (first form: 243 of 245, see F-31)."
+  result: "✅ 269 of 269 goals (first form: 243 of 245, see F-31)."
   does_not_show: "That the value returned is the right one (E-4)."
 - id: E-4
   asked: >-
@@ -724,7 +724,7 @@ The layer was written and tested first (E-5, E-6), then given contracts (E-9). F
   tool: "Mutation step"
   result: >-
     ✅ 52 of 52 rejected, in 58 tool runs. A tool run is one line of the list in `proofs/run.sh`: one error with the tool named for it. (The ten classifier errors of A-6 name three tools in one line; such a line counts as rejected when at least one of the three reports the error.) The whole list of all chapters,
-    in one run on the code of this report: 102 errors, 114 tool runs, every one rejected. One
+    in one run on the code of this report: 104 errors, 118 tool runs, every one rejected. One
     survived at first and two more were reported wrongly (F-29, F-30); two did not apply for a time
     (F-35).
   does_not_show: >-
@@ -735,7 +735,7 @@ The layer was written and tested first (E-5, E-6), then given contracts (E-9). F
     Does it compile for the target without warnings and without a C library call? Size and stack?
   tool: "Target build (step `target`); a firmware build with the Zephyr adapter"
   result: >-
-    ✅ `leaf.c` 4,106, `dict.c` 310, `lz4.c` 196 bytes; largest new frame 160 bytes (configuration),
+    ✅ `leaf.c` 4,226, `dict.c` 310, `lz4.c` 196 bytes; largest new frame 160 bytes (configuration),
     `ztl_input()` 80 bytes above the gate. In the firmware build: leaf 7,694 bytes of code in all,
     adapter 2,364 (and 761 for its shell command); RAM `struct ztl_leaf` 7,136 bytes, whole Zephyr module 15,832 bytes with a 3 KB thread stack.
   does_not_show: >-
@@ -755,7 +755,7 @@ The layer was written and tested first (E-5, E-6), then given contracts (E-9). F
     memory, no wrap, every loop ends.
   tool: "Frama-C WP, both data models, strict flags"
   result: >-
-    ✅ 1,779 of 1,779 goals (32-bit model: 1,785 of 1,785). The first run with contracts proved 1,751
+    ✅ 1,801 of 1,801 goals (32-bit model: 1,807 of 1,807). The first run with contracts proved 1,751
     of 1,759; the rest needed the packet ID statement on three answer functions, the reassembly
     start contract in the header, and one change of the code (F-34). Ten deliberate errors against
     these proofs rejected by WP (packet ID not advanced, two IDs for one answer, answer without a

@@ -242,7 +242,7 @@ Order = recommended order of trial. "Have" = installed on this host on 2026-11-1
     harnesses) and gate at 40 B (891 checks, 1 h 25 min) pass; gate at 64 B: no result in 6 h. Cryptography
     (`proofs/crypto_cbmc.c`): limb-limit induction step passes in seconds (runner step `cbmcpoly`);
     equivalence with reference-form models and seal-then-open: no result after 4 h. `run.sh mutate`:
-    102 deliberate errors in 114 tool runs (CBMC, WP, test vectors, protocol test), all rejected
+    104 deliberate errors in 118 tool runs (CBMC, WP, test vectors, protocol test), all rejected
 - id: P-2
   tool: "Frama-C Eva (24.0, 2022)"
   class: "Abstract interpretation"
@@ -257,8 +257,8 @@ Order = recommended order of trial. "Have" = installed on this host on 2026-11-1
   can_prove_here: "Function contracts: T4, table invariants, parts of T3 with crypto as axioms"
   have: "✅ through P-4 (Ubuntu `frama-c-base` has no WP plug-in)"
   status: >-
-    ♻️ 10 units (the nine source files and the two arrival orders of reassembly), 3,977 goals
-    (32-bit model 3,982), all proved at the full packet size, with unsigned overflow and downcast
+    ♻️ 11 units (the nine source files, the two arrival orders of reassembly, and parse after build), 4,296 goals
+    (32-bit model 4,301), all proved at the full packet size, with unsigned overflow and downcast
     checks on: exact classifier contract with the packet-id value; reassembly with the whole slot
     rule; the gate; the cryptography (memory safety, no wrap, the gate's contract of the primitive,
     Poly1305 step arithmetic); the LZ4 decoder and the dictionary reader (memory safety); the whole
