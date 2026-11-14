@@ -237,10 +237,11 @@ int ztl_pin(struct ztl_leaf *l, const uint8_t addr[ZTL_ADDR_LEN], const uint8_t 
 
 /* ---- Sending ---- */
 
-/* Start a packet to peer i: header with a new packet ID, flags and MAC zero. */
+/* Start a packet to peer i: take a new packet ID and write the verb. The
+ * header is written by finish(), so that nothing between the two can change it. */
 /*@ requires \valid(l) && i < ZTL_PEERS && \valid(tx + (0 .. ZTL_PKT_MIN - 1));
   @ requires \separated(l, tx + (0 .. ZTL_PKT_MIN - 1));
-  @ assigns l->next_id, tx[0 .. ZTL_PKT_MIN - 1];
+  @ assigns l->next_id, tx[ZTL_PKT_IDX_VERB];
   @ ensures \result == \old(l->next_id) && l->next_id == LEAF_NEXT_ID(\old(l->next_id));
   @ ensures tx[ZTL_PKT_IDX_VERB] == verb;
   @*/
@@ -248,29 +249,42 @@ static uint64_t begin(struct ztl_leaf *l, unsigned int i, uint8_t *tx, uint8_t v
 {
 	const uint64_t id = l->next_id;
 
+	(void)i;
 	l->next_id = (id == UINT64_MAX) ? 0u : id + 1u;
-	ztl_put_be64(&tx[ZTL_PKT_IDX_IV], id);
-	ztl_copy_bytes(&tx[ZTL_PKT_IDX_DEST], l->node.peer[i].addr, ZTL_ADDR_LEN);
-	ztl_copy_bytes(&tx[ZTL_PKT_IDX_SRC], l->node.self, ZTL_ADDR_LEN);
-	zero(&tx[ZTL_PKT_IDX_FLAGS], 1u + ZTL_MAC_LEN);
 	tx[ZTL_PKT_IDX_VERB] = verb;
 	return id;
 }
 
-/* Close a packet of len bytes to peer i: "fragmented" flag if it needs two
- * datagrams (the flag is part of the per-packet key), encryption, MAC. */
+/* The packet ID that begin() took: the one before l->next_id. */
+#define LEAF_PREV_ID(next) (((next) == 0) ? 18446744073709551615 : (next) - 1)
+
+/* Close a packet of len bytes to peer i: header (the packet ID that begin()
+ * took, destination, source, flags with "fragmented" if it needs two
+ * datagrams; the flag is part of the per-packet key), encryption, MAC. */
 /*@ requires \valid(l) && i < ZTL_PEERS && ZTL_PKT_MIN <= len <= ZTL_PKT_MAX && \valid(tx + (0 .. len - 1));
   @ requires \separated(l, tx + (0 .. len - 1));
   @ requires encrypt == 0 || encrypt == 1;
   @ requires encrypt == 0 ==> tx[ZTL_PKT_IDX_VERB] == VERB_HELLO;
-  @ assigns tx[ZTL_PKT_IDX_FLAGS .. len - 1], l->stats.tx_packets;
+  @ assigns tx[0 .. len - 1], l->stats.tx_packets;
   @ ensures \result == len;
+  @ // The header as sent (theorem T4).
+  @ ensures ZTL_SPEC_BE64(tx) == LEAF_PREV_ID(l->next_id);
+  @ ensures \forall integer k; 0 <= k < ZTL_ADDR_LEN ==>
+  @   tx[ZTL_PKT_IDX_DEST + k] == l->node.peer[i].addr[k] && tx[ZTL_PKT_IDX_SRC + k] == l->node.self[k];
+  @ ensures tx[ZTL_PKT_IDX_FLAGS] == ZTL_SPEC_SENT_FLAGS(len, encrypt);
   @*/
 static size_t finish(struct ztl_leaf *l, unsigned int i, uint8_t *tx, size_t len, int encrypt)
 {
+	const uint64_t id = (l->next_id == 0u) ? UINT64_MAX : l->next_id - 1u;
+
+	ztl_put_be64(&tx[ZTL_PKT_IDX_IV], id);
+	ztl_copy_bytes(&tx[ZTL_PKT_IDX_DEST], l->node.peer[i].addr, ZTL_ADDR_LEN);
+	ztl_copy_bytes(&tx[ZTL_PKT_IDX_SRC], l->node.self, ZTL_ADDR_LEN);
+	zero(&tx[ZTL_PKT_IDX_FLAGS], 1u + ZTL_MAC_LEN);
 	if (len > ZTL_UDP_MAX) {
 		tx[ZTL_PKT_IDX_FLAGS] = ZTL_FLAG_FRAGMENTED;
 	}
+	/*@ assert flags_before_seal: tx[ZTL_PKT_IDX_FLAGS] == (len > ZTL_UDP_MAX ? 0x40 : 0); */
 	ztl_auth_seal(l->node.peer[i].key, tx, len, encrypt);
 	count(&l->stats.tx_packets);
 	return len;
@@ -302,6 +316,7 @@ size_t ztl_tx_second(uint8_t pkt[ZTL_PKT_MAX], size_t len, size_t *at)
   @ assigns tx[0 .. ZTL_PKT_MAX - 1], l->next_id, l->stats.tx_packets, l->ps[i];
   @ ensures ZTL_PKT_MIN <= \result <= ZTL_UDP_MAX;
   @ ensures ztl_leaf_ok(l) && l->next_id == LEAF_NEXT_ID(\old(l->next_id));
+  @ ensures ZTL_SPEC_SENT_BY(l, i, tx, \result, \old(l->next_id));
   @*/
 static size_t send_hello(struct ztl_leaf *l, unsigned int i, uint32_t now_ms, uint8_t *tx)
 {
@@ -331,6 +346,7 @@ static size_t send_hello(struct ztl_leaf *l, unsigned int i, uint32_t now_ms, ui
   @ assigns tx[0 .. ZTL_PKT_MAX - 1], l->next_id, l->stats.tx_packets, l->ps[i], l->cfg_req_id, l->cfg_req_ms, l->req_sent, l->req_wait;
   @ ensures ZTL_PKT_MIN <= \result <= ZTL_UDP_MAX;
   @ ensures ztl_leaf_ok(l) && l->next_id == LEAF_NEXT_ID(\old(l->next_id));
+  @ ensures ZTL_SPEC_SENT_BY(l, i, tx, \result, \old(l->next_id));
   @*/
 static size_t send_config_request(struct ztl_leaf *l, unsigned int i, uint32_t now_ms, uint8_t *tx)
 {
@@ -355,6 +371,7 @@ static size_t send_config_request(struct ztl_leaf *l, unsigned int i, uint32_t n
   @ assigns tx[0 .. ZTL_PKT_MAX - 1], l->next_id, l->stats.tx_packets, l->ps[i];
   @ ensures ZTL_PKT_MIN <= \result <= ZTL_UDP_MAX;
   @ ensures ztl_leaf_ok(l) && l->next_id == LEAF_NEXT_ID(\old(l->next_id));
+  @ ensures ZTL_SPEC_SENT_BY(l, i, tx, \result, \old(l->next_id));
   @*/
 static size_t send_com(struct ztl_leaf *l, unsigned int i, uint32_t now_ms, uint8_t *tx)
 {
@@ -373,6 +390,7 @@ static size_t send_com(struct ztl_leaf *l, unsigned int i, uint32_t now_ms, uint
   @ assigns tx[0 .. ZTL_PKT_MAX - 1], l->next_id, l->stats.tx_packets, l->ps[i];
   @ ensures ZTL_PKT_MIN <= \result <= ZTL_UDP_MAX;
   @ ensures ztl_leaf_ok(l) && l->next_id == LEAF_NEXT_ID(\old(l->next_id));
+  @ ensures ZTL_SPEC_SENT_BY(l, i, tx, \result, \old(l->next_id));
   @*/
 static size_t send_like(struct ztl_leaf *l, unsigned int i, uint32_t now_ms, uint8_t *tx)
 {
@@ -403,6 +421,7 @@ static size_t send_like(struct ztl_leaf *l, unsigned int i, uint32_t now_ms, uin
   @ // One packet ID for each packet, and none without a packet.
   @ ensures \result == 0 ==> l->next_id == \old(l->next_id);
   @ ensures \result != 0 ==> l->next_id == LEAF_NEXT_ID(\old(l->next_id));
+  @ ensures \result != 0 ==> ZTL_SPEC_SENT_BY(l, i, tx, \result, \old(l->next_id));
   @*/
 static size_t poll_peer(struct ztl_leaf *l, unsigned int i, uint32_t now_ms, uint8_t *tx)
 {
@@ -479,6 +498,8 @@ size_t ztl_frame_to(struct ztl_leaf *l, unsigned int i, const uint8_t dst[ZTL_ET
 	    l->ps[i].seen == 0u || len < 1u || len > l->mtu) {
 		return 0;
 	}
+	/*@ assert still_ok: ztl_leaf_ok(l) && l->have_config != 0 && i < ZTL_PEERS && l->node.peer[i].pinned != 0 &&
+	  @   l->ps[i].seen != 0 && 1 <= len <= l->mtu; */
 	if ((dst[0] & 0x01u) != 0u) {
 		/* Group address: MULTICAST_FRAME, one copy to each reachable peer. */
 		uint8_t *b = &tx[ZTL_PKT_MIN];
@@ -498,6 +519,8 @@ size_t ztl_frame_to(struct ztl_leaf *l, unsigned int i, const uint8_t dst[ZTL_ET
 		}
 		ztl_put_be16(&b[MC_FRAME_HDR - 2u], ethertype);
 		ztl_copy_bytes(&b[MC_FRAME_HDR], data, len);
+		/*@ assert still_ok: ztl_leaf_ok(l) && l->have_config != 0 && i < ZTL_PEERS && l->node.peer[i].pinned != 0 &&
+		  @   l->ps[i].seen != 0 && 1 <= len <= l->mtu; */
 		return finish(l, i, tx, ZTL_PKT_MIN + MC_FRAME_HDR + len, 1);
 	}
 	ztl_mac_of(peer_mac, l->node.peer[i].addr, l->nwid);
@@ -508,6 +531,8 @@ size_t ztl_frame_to(struct ztl_leaf *l, unsigned int i, const uint8_t dst[ZTL_ET
 	ztl_copy_bytes(&tx[ZTL_PKT_MIN], l->nwid, ZTL_NWID_LEN);
 	ztl_put_be16(&tx[ZTL_PKT_MIN + ZTL_NWID_LEN], ethertype);
 	ztl_copy_bytes(&tx[ZTL_PKT_MIN + FRAME_HDR], data, len);
+	/*@ assert still_ok: ztl_leaf_ok(l) && l->have_config != 0 && i < ZTL_PEERS && l->node.peer[i].pinned != 0 &&
+	  @   l->ps[i].seen != 0 && 1 <= len <= l->mtu; */
 	return finish(l, i, tx, ZTL_PKT_MIN + FRAME_HDR + len, 1);
 }
 

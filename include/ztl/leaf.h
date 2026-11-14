@@ -106,6 +106,23 @@ struct ztl_leaf {
   @*/
 #define ZTL_SPEC_NEXT_ID(old) (((old) == 18446744073709551615) ? 0 : (old) + 1)
 
+/*
+ * A packet as this leaf sends it (theorem T4 of CHECKLIST.md): flags byte
+ * with "fragmented" (0x40) exactly when the packet needs two datagrams,
+ * cipher suite 1 (0x08) when encrypted, else suite 0, hop count 0; written
+ * as constants, so that no proof needs bit arithmetic. ZTL_SPEC_SENT_BY
+ * adds the header: packet ID id, destination peer i, source this node.
+ */
+#define ZTL_SPEC_SENT_FLAGS(len, enc) \
+	((len) > ZTL_UDP_MAX ? ((enc) == 1 ? 0x48 : 0x40) : ((enc) == 1 ? 0x08 : 0x00))
+#define ZTL_SPEC_SENT(pkt, len, enc) \
+	((pkt)[ZTL_PKT_IDX_SRC] != ZTL_FRAG_INDICATOR && (pkt)[ZTL_PKT_IDX_FLAGS] == ZTL_SPEC_SENT_FLAGS(len, enc))
+#define ZTL_SPEC_SENT_BY(l, i, tx, len, id) \
+	(ZTL_PKT_MIN <= (len) && (len) <= ZTL_PKT_MAX && ZTL_SPEC_BE64(tx) == (id) && \
+	 (\forall integer k; 0 <= k < ZTL_ADDR_LEN ==> \
+		(tx)[ZTL_PKT_IDX_DEST + k] == (l)->node.peer[i].addr[k] && (tx)[ZTL_PKT_IDX_SRC + k] == (l)->node.self[k]) && \
+	 ((tx)[ZTL_PKT_IDX_FLAGS] == ZTL_SPEC_SENT_FLAGS(len, 0) || (tx)[ZTL_PKT_IDX_FLAGS] == ZTL_SPEC_SENT_FLAGS(len, 1)))
+
 /* One Ethernet frame of the virtual network. data points into the datagram
  * given to ztl_input() or into the leaf and is valid until the next call. */
 struct ztl_frame {
@@ -130,6 +147,8 @@ struct ztl_frame {
  */
 /*@ requires \valid(l) && \valid_read(self + (0 .. ZTL_ADDR_LEN - 1)) && \valid_read(pub + (0 .. ZTL_PUB_LEN - 1)) &&
   @   \valid_read(nwid + (0 .. ZTL_NWID_LEN - 1));
+  @ // A ZeroTier address never starts with 0xff (reserved); a head with it would read as a fragment.
+  @ requires self[0] != ZTL_FRAG_INDICATOR;
   @ requires \separated(l, self + (0 .. ZTL_ADDR_LEN - 1)) && \separated(l, pub + (0 .. ZTL_PUB_LEN - 1)) &&
   @   \separated(l, nwid + (0 .. ZTL_NWID_LEN - 1));
   @ assigns *l;
@@ -197,6 +216,7 @@ unsigned int ztl_input(struct ztl_leaf *ZTL_EXCL l, uint8_t *ZTL_COUNT(len) dgra
   @         l->cfg_req_id, l->cfg_req_ms, l->req_sent, l->req_wait;
   @ ensures \result == 0 || ZTL_PKT_MIN <= \result <= ZTL_UDP_MAX;
   @ ensures \result != 0 ==> *peer < ZTL_PEERS && l->node.peer[*peer].pinned != 0;
+  @ ensures \result != 0 ==> ZTL_SPEC_SENT_BY(l, *peer, tx, \result, \old(l->next_id));
   @ ensures ztl_leaf_ok(l);
   @ // One packet ID for each packet, and none without a packet.
   @ ensures \result == 0 ==> l->next_id == \old(l->next_id);
@@ -221,6 +241,9 @@ size_t ztl_poll(struct ztl_leaf *ZTL_EXCL l, uint32_t now_ms, uint8_t tx[ZTL_PKT
   @ // A frame goes out only with a configuration, to a pinned peer that was heard, with 1 .. MTU bytes.
   @ ensures \result != 0 ==> l->have_config != 0 && i < ZTL_PEERS && l->node.peer[i].pinned != 0 &&
   @   l->ps[i].seen != 0 && 1 <= len <= l->mtu;
+  @ ensures \result != 0 ==> ZTL_SPEC_SENT_BY(l, i, tx, \result, \old(l->next_id));
+  @ // A frame always goes out encrypted (cipher suite 1).
+  @ ensures \result != 0 ==> tx[ZTL_PKT_IDX_FLAGS] == ZTL_SPEC_SENT_FLAGS(\result, 1);
   @ ensures ztl_leaf_ok(l);
   @ ensures \result == 0 ==> l->next_id == \old(l->next_id);
   @ ensures \result != 0 ==> l->next_id == ZTL_SPEC_NEXT_ID(\old(l->next_id));

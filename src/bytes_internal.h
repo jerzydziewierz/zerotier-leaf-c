@@ -48,6 +48,7 @@ static inline void ztl_put_be16(uint8_t *p, uint16_t v)
 
 /*@ requires \valid(p + (0 .. 3));
   @ assigns p[0 .. 3];
+  @ ensures 16777216 * p[0] + 65536 * p[1] + 256 * p[2] + p[3] == v;
   @*/
 static inline void ztl_put_be32(uint8_t *p, uint32_t v)
 {
@@ -59,6 +60,8 @@ static inline void ztl_put_be32(uint8_t *p, uint32_t v)
 
 /*@ requires \valid(p + (0 .. 7));
   @ assigns p[0 .. 7];
+  @ ensures 4294967296 * (16777216 * p[0] + 65536 * p[1] + 256 * p[2] + p[3]) +
+  @   (16777216 * p[4] + 65536 * p[5] + 256 * p[6] + p[7]) == v;
   @*/
 static inline void ztl_put_be64(uint8_t *p, uint64_t v)
 {

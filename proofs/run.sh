@@ -22,7 +22,7 @@ tools=("$@"); [ ${#tools[@]} -eq 0 ] && tools=(cbmc cbmc32 cover cbmcpoly eva wp
 FC0="opam exec --switch ztl -- frama-c -cpp-extra-args=-Iinclude -cpp-extra-args=-Isrc"
 # Units proved by WP, each alone: a function is proved against its contract,
 # and callers use the contracts of what they call.
-WP_UNITS=${ZTL_WP_UNITS:-"src/wire.c src/reasm.c proofs/reasm_wp.c src/rx.c src/salsa.c src/poly.c src/auth.c src/lz4.c src/dict.c src/leaf.c"}
+WP_UNITS=${ZTL_WP_UNITS:-"src/wire.c src/reasm.c proofs/reasm_wp.c proofs/roundtrip_wp.c src/rx.c src/salsa.c src/poly.c src/auth.c src/lz4.c src/dict.c src/leaf.c"}
 # WP also proves that no unsigned sum or product wraps and that no conversion
 # to a narrower unsigned type loses bits (C defines both, the code never wants them).
 WP_STRICT="-warn-unsigned-overflow -warn-unsigned-downcast"
@@ -237,6 +237,10 @@ src/leaf.c|wp|leaf: fragment header without the destination|s/ztl_copy_bytes(\&p
 src/leaf.c|wp|leaf: frame of a host longer than the packet buffer|s/	    l->ps\[i\].seen == 0u || len < 1u || len > l->mtu) {/	    l->ps[i].seen == 0u || len < 1u) {/
 src/leaf.c|wp|leaf: two packet IDs for one answer|s/	begin_ok(l, i, tx, VERB_ECHO, pkt);/	begin_ok(l, i, tx, VERB_ECHO, pkt); begin_ok(l, i, tx, VERB_ECHO, pkt);/
 src/leaf.c|wp|leaf: address list read past its end|s/		if (v\[i\] == 4u \&\& n - i >= 7u) {/		if (v[i] == 4u) {/
+src/leaf.c|wp|leaf: T4: packet sent with the ID of the next packet|s/	const uint64_t id = (l->next_id == 0u) ? UINT64_MAX : l->next_id - 1u;/	const uint64_t id = l->next_id;/
+src/leaf.c|wp|leaf: T4: own address sent as the destination|s/ztl_copy_bytes(\&tx\[ZTL_PKT_IDX_DEST\], l->node.peer\[i\].addr, ZTL_ADDR_LEN);/ztl_copy_bytes(\&tx[ZTL_PKT_IDX_DEST], l->node.self, ZTL_ADDR_LEN);/
+src/leaf.c|proto|leaf: T4: own address sent as the destination|s/ztl_copy_bytes(\&tx\[ZTL_PKT_IDX_DEST\], l->node.peer\[i\].addr, ZTL_ADDR_LEN);/ztl_copy_bytes(\&tx[ZTL_PKT_IDX_DEST], l->node.self, ZTL_ADDR_LEN);/
+src/leaf.c|wp|leaf: "fragmented" flag not set on a packet in two parts|s/		tx\[ZTL_PKT_IDX_FLAGS\] = ZTL_FLAG_FRAGMENTED;/		;/
 MUT
 		rm -rf $M ;;
 	*) echo "unknown tool $t"; exit 2 ;;
