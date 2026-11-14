@@ -210,6 +210,48 @@ The intended use of this leaf is a stream of sensor data that is compressed befo
 Reading: AES-GMAC-SIV is affordable in memory (2.5 to 5.4 KB of code, 0.4 to 6.8 KB of RAM) and its real price is in the proofs and in cycles. Encrypted HELLO is not compatible with the design decision that keeps the board's secret key out of the firmware.
 
 
+## Who calls the leaf, and the shape of the call graph
+
+A stock ZeroTier node does not call the leaf: it only sends UDP datagrams. The leaf is a library with no thread and no `main`. The platform adapter (for Zephyr: `zephyr/ztl_zephyr.c`) owns the socket, the timer and the network interface, and calls the functions of `include/ztl/leaf.h`:
+
+| When | Caller in the Zephyr adapter | Entry point of the leaf |
+|---|---|---|
+| Once at the start | `ztl_zephyr_start()` | `ztl_init()`, then `ztl_pin()` for each peer |
+| A UDP datagram arrived | worker thread, after `zsock_recvfrom()` | `ztl_input()` |
+| About every 100 ms | worker thread | `ztl_poll()` (HELLO, configuration request, certificate, keep-alive), until it returns 0 |
+| The IP stack sends an Ethernet frame on the overlay | `ztl_dev_send()` | `ztl_frame_to()` |
+| A packet is longer than one datagram | `send_packet()` | `ztl_tx_first()`, `ztl_tx_second()` |
+
+So there are three doors at run time: data in (`ztl_input`), time passes (`ztl_poll`), data out (`ztl_frame_to`). The leaf never calls back into the adapter. Each call fills a packet buffer and/or a frame and returns; the adapter does all input and output.
+
+![Static call graph of the leaf](img/call-graph.svg)
+
+The shape: a wide dispatcher on top, one deep shared spine below. `ztl_input()` first calls the receive gate `ztl_rx()` (classify, reassemble, authenticate) and then one of about nine `on_*` handlers, one for each message type. Every packet that the leaf sends, from any door, goes through `finish()`, which seals it with `ztl_auth_seal()`; below that is the cryptography in its smallest steps (Salsa20/12: block, double round, quarter round, 32-bit add; Poly1305: load, multiply, add, finish). There is no recursion and no call through a pointer: every call is known when the code is compiled, so the graph is fixed.
+
+Call depth as written (host compiler without optimisation, so no function is inlined; depth 1 = the entry point calls nothing):
+
+| Entry point | Call depth | Functions reached |
+|---|---|---|
+| `ztl_input()` | 9 | 69 |
+| `ztl_poll()` | 10 | 34 |
+| `ztl_frame_to()` | 8 | 30 |
+| `ztl_init()`, `ztl_pin()`, `ztl_tx_second()` | 2 | 5, 3, 1 |
+
+On the target the compiler inlines many small functions (`-Os`, Cortex-M7, the flags of the runner's `target` step): 50 of 86 functions remain. The stack that a call needs is the largest sum of frame sizes along any path; each frame size comes from the compiler (`-fcallgraph-info=su`) and includes the saved return address and registers:
+
+| Entry point | Call depth on the target | Worst stack (bytes) | Deepest path, frame size in bytes |
+|---|---|---|---|
+| `ztl_input()` | 7 | 536 | `ztl_input` 80 → `ztl_rx` 96 → `ztl_auth_open` 72 → `ztl_salsa2012_xor` 96 → `ztl_salsa2012_block` 176 → `quarter_round` 16 |
+| `ztl_poll()` | 7 | 416 | `ztl_poll` 48 → `finish` 16 → `ztl_auth_seal` 64 → `ztl_salsa2012_xor` 96 → `ztl_salsa2012_block` 176 → `quarter_round` 16 |
+| `ztl_frame_to()` | 7 | 416 | the same path from `ztl_frame_to` 48 |
+| `ztl_init()` | 2 | 60 | `ztl_init` 48 → `ztl_mac_of` 12 |
+
+The deepest point is always the Salsa20/12 block function (176 bytes: 16 words of state and 16 words of working copy). The figure is the leaf's own part; the adapter adds its frames below it, and an interrupt can add its frame on top (on a Cortex-M7 with the floating-point unit in use, up to 104 bytes). The Zephyr adapter gives the leaf a thread of 3 KB.
+
+Why the shape matters for the proofs: WP proves one function at a time. When it proves `finish()`, it does not look into `ztl_auth_seal()`; it uses only the contract of `ztl_auth_seal()`. So the depth of the stack does not make a single proof larger, and that is why the cipher is cut into small functions with simple contracts. The two rules above (no recursion, no call through a pointer) keep this sound: no proof of termination by a measure is needed for calls, and the contract used at each call is the contract of the one function that the call reaches. The CBMC harnesses work the other way: they inline the whole spine, and so they run only at reduced packet sizes.
+
+Make the drawing and the tables again after a change in `src/`: `python3 tools/callgraph/callgraph.py` (drawing and first table; needs GCC 10 or later and Graphviz), with `ZTL_CC=<arm-zephyr-eabi-gcc>` also the target table. `--check` reports whether the drawing is up to date.
+
 ## Where the proofs are
 
 Each step in the last figure names the statements that are proved for it; they are listed in [PROOFS.md](PROOFS.md#list-of-proofs). In short: steps 1 to 3 are proved to follow their exact written rules; for the whole path, no step reads or writes outside its memory, no arithmetic wraps, every loop ends; and no frame and no reply leaves `ztl_input()` unless step 4 answered yes. What the messages of step 6 mean, and that step 4 answers yes only for a right code, is shown by tests against the reference implementation, not by proof. What a stock peer expects from each message: [PROTOCOL.md](PROTOCOL.md).
