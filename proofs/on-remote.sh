@@ -51,7 +51,8 @@ fetch) rsync -a "$H:$D/proofs/out-*" "$L/" && cut -c1-220 "$L/out-run.txt" ;;
 wait)
 	while :; do
 		st=$(r "systemctl show $U -p ActiveState --value")
-		case "$st" in active|activating|deactivating) sleep 15 ;; *) break ;; esac
+		# Only a real end state ends the wait: an ssh call that failed gives no state, and the run goes on.
+		case "$st" in inactive|failed) break ;; *) sleep 15 ;; esac
 	done
 	rsync -a "$H:$D/proofs/out-*" "$L/"; cut -c1-220 "$L/out-run.txt"
 	# A stopped run also has the result "success": the run must have written its last line.
