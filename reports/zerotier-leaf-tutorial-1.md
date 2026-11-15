@@ -237,13 +237,13 @@ Call depth as written (host compiler without optimisation, so no function is inl
 | `ztl_frame_to()` | 8 | 30 |
 | `ztl_init()`, `ztl_pin()`, `ztl_tx_second()` | 2 | 5, 3, 1 |
 
-On the target the compiler inlines many small functions (`-Os`, Cortex-M7, the flags of the runner's `target` step): 50 of 86 functions remain. The stack that a call needs is the largest sum of frame sizes along any path; each frame size comes from the compiler (`-fcallgraph-info=su`) and includes the saved return address and registers:
+On the target the compiler inlines many small functions (`-Os`, Cortex-M7, the flags of the runner's `target` step): 48 of 86 functions remain. The stack that a call needs is the largest sum of frame sizes along any path; each frame size comes from the compiler (`-fcallgraph-info=su`) and includes the saved return address and registers:
 
 | Entry point | Call depth on the target | Worst stack (bytes) | Deepest path, frame size in bytes |
 |---|---|---|---|
 | `ztl_input()` | 7 | 536 | `ztl_input` 80 → `ztl_rx` 96 → `ztl_auth_open` 72 → `ztl_salsa2012_xor` 96 → `ztl_salsa2012_block` 176 → `quarter_round` 16 |
-| `ztl_poll()` | 7 | 416 | `ztl_poll` 48 → `finish` 16 → `ztl_auth_seal` 64 → `ztl_salsa2012_xor` 96 → `ztl_salsa2012_block` 176 → `quarter_round` 16 |
-| `ztl_frame_to()` | 7 | 416 | the same path from `ztl_frame_to` 48 |
+| `ztl_poll()` | 7 | 440 | `ztl_poll` 64 → `finish` 24 → `ztl_auth_seal` 64 → `ztl_salsa2012_xor` 96 → `ztl_salsa2012_block` 176 → `quarter_round` 16 |
+| `ztl_frame_to()` | 7 | 432 | the same path from `ztl_frame_to` 56 |
 | `ztl_init()` | 2 | 60 | `ztl_init` 48 → `ztl_mac_of` 12 |
 
 The deepest point is always the Salsa20/12 block function (176 bytes: 16 words of state and 16 words of working copy). The figure is the leaf's own part; the adapter adds its frames below it, and an interrupt can add its frame on top (on a Cortex-M7 with the floating-point unit in use, up to 104 bytes). The Zephyr adapter gives the leaf a thread of 3 KB.
